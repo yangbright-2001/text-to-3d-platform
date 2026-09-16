@@ -1,34 +1,30 @@
 # Frontend
 
-React + Vite + TypeScript SPA with a React Three Fiber viewer.
+React + Vite + TypeScript app with a React Three Fiber 3D viewer.
 
-Scaffolded in **M6**: renders a bundled sample GLB (`public/sample.glb`, the
-Khronos glTF Box sample) to prove the R3F pipeline works. M7–M9 wire the
-prompt form, refine button, and generation history. M10 adds a loading
-overlay and an error boundary around the viewer.
+For the full project (backend + API key + both terminals), start from
+the root [`README.md`](../README.md). This file is only the frontend
+piece.
 
-## Setup
+## Requirements
 
-Requires Node 20+ (developed on Node 24).
+Node 20+ (developed on Node 24).
+
+## Run
 
 ```bash
 cd frontend
 npm install
-```
-
-## Run the dev server
-
-```bash
 npm run dev
 # open http://localhost:5173
 ```
 
 The dev server proxies `/api` and `/files` to `http://127.0.0.1:8000`
-(configured in `vite.config.ts`), so the backend must be running on port
-8000 for any real generation flow. The default sample GLB is served by
-Vite itself and needs no backend.
+(see `vite.config.ts`). The backend must be running on port 8000 for
+prompt submission, history, and models served from `data/models/`.
 
-To point the viewer at a real backend-served model:
+To point the viewer at a backend-served GLB without going through
+history:
 
 ```
 http://localhost:5173/?url=/files/<generation_id>/preview.glb
@@ -40,8 +36,8 @@ http://localhost:5173/?url=/files/<generation_id>/preview.glb
 npm run build
 ```
 
-Runs the TypeScript compiler then Vite's production build. Output lands in
-`dist/` (gitignored).
+Runs the TypeScript compiler then Vite's production build. Output lands
+in `dist/` (gitignored).
 
 ## Sample model attribution
 

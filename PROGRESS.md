@@ -2,7 +2,7 @@
 
 ## Current Status
 
-M1–M10 complete. The full user story works end-to-end (prompt → preview → refine → history). Watchers survive a backend restart: on boot, any in-flight row is reconciled. The viewer shows a loading overlay and a message if a GLB fails to load. Failed history cards show the error text. After a refine, history sorts and timestamps by `updated_at` and cache-busts the thumbnail so the textured PNG and refine time appear at the front. The README documents the dummy test-mode key, reviewer smoke checklist, and architecture trade-offs.
+M1–M10 complete. The full user story works end-to-end (prompt → preview → refine → history). Watchers survive a backend restart: on boot, any in-flight row is reconciled. The viewer shows a loading overlay and a message if a GLB fails to load. Failed history cards show the error text. After a refine, history sorts and timestamps by `updated_at` and cache-busts the thumbnail so the textured PNG and refine time appear at the front. The README is a run guide (how to start backend + frontend, test-mode key, what to try). Design/AI-workflow context lives in `AI_WORKFLOW.md`.
 
 ## Completed Features
 
@@ -26,7 +26,7 @@ M1–M10 complete. The full user story works end-to-end (prompt → preview → 
 - **M10 — Robustness and polish**:
   - Backend: `reconcile_in_flight` in `watcher.py` scans non-terminal rows on FastAPI startup and either respawns `watch_preview` / `watch_refine` (when a Meshy task id exists) or marks the row failed (PENDING with no task id — process died before Meshy accepted; we do not retry create, to avoid double-charging). Spawn helpers moved out of `routes.py` so the lifespan and the endpoints share one path. Pytest sets `TEXT3D_SKIP_RECONCILE=1` so TestClient lifespan never scans the developer's `data/app.db`.
   - Frontend: `ModelViewer` wraps the canvas in an error boundary ("Could not load this 3D model") and a Suspense fallback ("Loading model…"). Failed tracker cards show an ellipsized `error` line; the tooltip still has the full prompt + reason. Grid stretch keeps row heights even when a failed card is taller.
-  - README: test-mode key, two-terminal reviewer checklist (including restart-mid-run), pytest note, and architecture trade-offs (SQLite, local `data/models/`, in-process watchers, 3-day Meshy retention).
+  - README: how to run (two terminals, test-mode key, smoke steps, pytest). `frontend/README.md` covers only the Vite app (proxy, `?url=`, build, sample GLB attribution).
 - Non-code: architecture plan in `PLAN.md`; workflow rules in `.cursor/rules/project.mdc`.
 - **Post-M10 polish**: header platform name ("Text to 3D") bumped to 28px / weight 800 / white so it reads as the product lockup rather than another header control. Home prompt card is larger (760px, taller textarea), centered in the main pane, then nudged slightly up so it does not sit below visual center. Opening Generation history from a ``?url=`` debug override now replaces the whole query (``?url=`` outranks ``?view=tracker``, so leaving url set looked like a no-op).
 
@@ -79,3 +79,4 @@ M1–M10 complete. The full user story works end-to-end (prompt → preview → 
 - The 3s poll cadence + 5s backend Meshy poll mean progress may briefly appear stuck between updates. The progress-bar CSS transition smooths this visually.
 - Tracker thumbnails are best-effort: rows without a `thumbnail_url` (in-flight, or `PREVIEW_FAILED` before any image was ever downloaded) show a status-tinted placeholder. Failed rows also show the `error` string.
 - Refine needs the original Meshy `preview_task_id` to still exist **on the same Meshy account/key** that created it. Switching from a real key to the dummy test-mode key (or waiting past Meshy's 3-day retention) makes Meshy return `Preview task not found`. The locally downloaded preview GLB stays viewable; this is not an app bug. A new preview under the current key is required to refine.
+

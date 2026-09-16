@@ -1,35 +1,38 @@
 # Text-to-3D Web Application
 
-A small web app that turns a text prompt into a 3D model using the Meshy
-Text-to-3D API. A user submits a prompt, the backend generates a low-cost
-**preview** mesh, and the user can then explicitly **refine** it with textures.
-Generations are tracked asynchronously so you can close the browser and come
-back later via the Generation history page.
+A local web app that turns a text prompt into a 3D model using the
+[Meshy Text-to-3D API](https://docs.meshy.ai/en/api/text-to-3d). Submit a
+prompt, wait for a **preview** mesh, then optionally **refine** it with
+textures. Generations are tracked asynchronously, so you can close the
+browser and reopen them later from **Generation history**.
 
-See [`PLAN.md`](PLAN.md) for the architecture and milestone roadmap, and
-[`PROGRESS.md`](PROGRESS.md) for current status.
+How the project was designed and built (including the AI-assisted
+workflow) is in [`AI_WORKFLOW.md`](AI_WORKFLOW.md). Architecture and
+milestone status are in [`PLAN.md`](PLAN.md) and [`PROGRESS.md`](PROGRESS.md).
 
 ## Tech stack
 
-- Backend: Python 3.11+ / FastAPI, SQLite, local file storage (no cloud services)
+- Backend: Python 3.11+ / FastAPI, SQLite, local file storage
 - Frontend: React + Vite + TypeScript + React Three Fiber
 
 ## Project layout
 
 ```
-backend/     FastAPI app, tests, dependencies
-frontend/    React app (Vite + R3F viewer)
-data/        SQLite DB + downloaded models (gitignored, created at runtime)
-PLAN.md      Architecture summary + milestones
-PROGRESS.md  Living status log
+backend/        FastAPI app, tests, dependencies
+frontend/       React app (Vite + 3D viewer)
+data/           SQLite DB + downloaded models (gitignored, created at runtime)
+AI_WORKFLOW.md  Design context and AI-assisted workflow
+PLAN.md         Architecture summary + milestones
+PROGRESS.md     Living status log
 ```
 
-## Reviewer demo (zero Meshy credits)
+## How to run
 
-Reviewers **do** need an API key in `.env`, but it does not have to be a paid
-key. Meshy ships a public **test-mode** key that runs the full app loop
-(persist, poll, download GLB + thumbnail, history, viewer, refine) and always
-returns the same sample model (a wooden barrel) regardless of the prompt.
+You need **Python 3.11+** (developed on 3.13) and **Node 20+** (developed
+on Node 24). Generation also needs a Meshy API key, which you add after
+copying the env template (step 1 below).
+
+### 1. Backend
 
 ```bash
 cd backend
@@ -39,53 +42,24 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Set this in `backend/.env` (not a secret; it consumes no credits):
+Open **`backend/.env`** and set `MESHY_API_KEY` on the line that currently
+reads `MESHY_API_KEY=` (leave `MESHY_API_BASE` as-is).
+
+To run the full app without a personal API key, use Meshy's public
+**test-mode** key. It still persists, polls, downloads GLB + thumbnail,
+and supports history / viewer / refine, but always returns **the same
+sample** model (**a wooden tankard**), regardless of the prompt:
 
 ```
 MESHY_API_KEY=msy_dummy_api_key_for_test_mode_12345678
 ```
 
-Then two terminals:
+To generate a model that matches your prompt instead of the sample
+tankard, replace the public
+**test-mode** key and put your own Meshy API key in the same
+`MESHY_API_KEY=` line. Restart uvicorn after any change to `.env`.
 
-```bash
-# terminal 1 — API on http://127.0.0.1:8000
-cd backend
-source .venv/bin/activate
-uvicorn app.main:app --reload
-
-# terminal 2 — UI on http://localhost:5173
-cd frontend
-npm install
-npm run dev
-```
-
-Open http://localhost:5173 and:
-
-1. Submit any prompt → a preview mesh appears (the sample barrel in test mode).
-2. Click **Refine with textures** → the textured model replaces the preview.
-3. Open **Generation history** → cards with thumbnails; click one to reopen it.
-4. Optional: stop the backend mid-generation and start it again. Progress
-   should resume (startup reconciliation).
-5. `cd backend && source .venv/bin/activate && pytest` — 0 real Meshy credits.
-
-A real Meshy key (shared privately, never committed) produces prompt-accurate
-models and spends subscription credits. No code change is required to switch
-keys: edit `.env` and restart uvicorn.
-
-The Meshy API key is **backend-only**. Never commit `.env`.
-
-## Backend setup (detail)
-
-Requires Python 3.11+ (developed on 3.13).
-
-```bash
-cd backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
-# then set MESHY_API_KEY (test-mode or real)
-```
+Then start the API:
 
 ```bash
 uvicorn app.main:app --reload
@@ -97,12 +71,13 @@ curl http://127.0.0.1:8000/api/health
 pytest
 ```
 
-Automated tests mock Meshy (`respx` + `FakeMeshyClient`) and use a temporary
-SQLite per test. They never touch `data/app.db` and never consume credits.
+Automated tests mock Meshy (`respx` + `FakeMeshyClient`) and use a
+temporary SQLite per test. They never touch `data/app.db` and never call
+the real Meshy API.
 
-## Frontend setup (detail)
+### 2. Frontend
 
-Requires Node 20+ (developed on Node 24). See [`frontend/README.md`](frontend/README.md).
+In a second terminal:
 
 ```bash
 cd frontend
@@ -110,28 +85,34 @@ npm install
 npm run dev
 ```
 
-Vite proxies `/api` and `/files` to the backend on port 8000.
+Open http://localhost:5173. Vite proxies `/api` and `/files` to the
+backend on port 8000, so keep uvicorn running for generation, history,
+and the 3D viewer.
 
-## Architecture trade-offs
+More frontend notes (build, debug `?url=`, sample GLB attribution) are in
+[`frontend/README.md`](frontend/README.md).
 
-Chosen so the demo has **no extra hosting, database, queue, or object-storage
-cost**:
+### 3. Try the app
 
-- **One FastAPI process + one SQLite file (`data/app.db`)**. No Postgres,
-  Redis, Celery, or message queue. Fine for a single-user demo; not for
-  multi-process production.
-- **Models live on local disk (`data/models/`)**, served by FastAPI at
-  `/files/...`. Meshy keeps API assets for at most 3 days and its download
-  URLs expire, so storing only Meshy URLs would break history. Reviewers
-  generate files on their own machine; nothing is pre-bundled in git.
-- **In-process asyncio watchers** poll Meshy (~5s) and persist progress.
-  On process start, any non-terminal row is picked up again (reconciliation).
-  If the backend was down for more than 3 days after Meshy finished, the
-  download URL is gone and that row fails.
-- **Preview then explicit refine**. One application-level generation wraps
-  two Meshy tasks. Refine never starts by itself.
-- **Lowest-cost Meshy settings**: `meshy-6-lite` preview, refine inherits
-  the model, `enable_pbr: false`, 2k textures, GLB only.
+1. Submit any prompt → a preview mesh appears (the sample tankard in
+   test mode).
+2. Click **Refine with textures** → the textured model replaces the
+   preview.
+3. Open **Generation history** → cards with thumbnails; click one to
+   reopen it.
+4. Optional: stop the backend mid-generation and start it again.
+   Progress should resume.
 
-Out of scope: login, deleting/cancelling tasks, retrying a failed refine
-(generate a new preview instead).
+## How it works
+
+- One FastAPI process, one SQLite file (`data/app.db`), and model files
+  on local disk (`data/models/`), served at `/files/...`.
+- In-process watchers poll Meshy (~5s) and persist progress. On process
+  start, any unfinished generation is picked up again. Meshy keeps
+  API-generated assets for at most 3 days; if the backend was down
+  longer than that after Meshy finished, the download URL is gone and
+  that row fails.
+- Preview and refine are two Meshy tasks wrapped as one generation.
+  Refine starts only when the user clicks the button.
+- Preview uses `meshy-6-lite`, GLB only; refine inherits that model with
+  `enable_pbr: false` and 2k textures.
