@@ -143,7 +143,9 @@ More frontend notes (build, debug `?url=`, sample GLB attribution) are in
 3. Open **"Generation history"** → cards with thumbnails; click one to
   reopen it. (Right after clone this page is empty until you generate
    locally.)
-4. Optional: stop the backend mid-generation and start it again.
+4. Click **"Text to 3D"** -> go back to the home page no matter which
+   page you are in
+5. Optional: stop the backend mid-generation and start it again.
   Generation progress should resume after backend restarts.
 
 
