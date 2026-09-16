@@ -79,6 +79,16 @@ export function getGeneration(id: string): Promise<Generation> {
 }
 
 /**
+ * ``GET /api/generations`` — the Task Tracker's data source (M9).
+ *
+ * Backend orders newest-first (see ``list_generations`` in ``routes.py``),
+ * so the tracker can render the array as-is without a client-side sort.
+ */
+export function listGenerations(): Promise<Generation[]> {
+  return jsonFetch<Generation[]>('/api/generations')
+}
+
+/**
  * ``POST /api/generations/{id}/refine`` — user-initiated refine (M8).
  *
  * The backend returns the updated row synchronously with either

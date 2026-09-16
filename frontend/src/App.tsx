@@ -2,6 +2,7 @@ import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 import GenerationView from './GenerationView'
 import ModelViewer from './ModelViewer'
 import PromptForm from './PromptForm'
+import TaskTracker from './TaskTracker'
 
 /**
  * Read a query-string param and keep it in sync with browser navigation.
@@ -48,15 +49,20 @@ function useQueryParam(
 }
 
 /**
- * Top-level router between the three M7 modes.
+ * Top-level router between the app's URL-driven modes.
  *
  * Precedence (most-specific first):
- *   1. ``?url=`` — M6's debug override, renders any GLB verbatim.
- *   2. ``?id=``  — poll a specific generation and show progress/model.
- *   3. neither   — prompt form.
+ *   1. ``?url=``          — M6 debug override; renders any GLB verbatim.
+ *   2. ``?id=``           — poll a specific generation (M7) / show refine (M8).
+ *   3. ``?view=tracker``  — M9 Task Tracker page.
+ *   4. neither            — prompt form (default landing).
+ *
+ * Keeping both ``id`` and ``view`` in the URL means back/forward walks the
+ * history naturally: form → tracker → viewer → back → tracker → back → form.
  */
 export default function App() {
   const [id, setId] = useQueryParam('id')
+  const [view, setView] = useQueryParam('view')
 
   // ``url`` is only read on mount: it's a debug override, not something the
   // app itself ever mutates. Kept in a ``useMemo`` for symmetry with ``id``.
@@ -66,16 +72,44 @@ export default function App() {
   )
 
   const handleCreated = useCallback((newId: string) => setId(newId), [setId])
-  const handleReset = useCallback(() => setId(null), [setId])
+  // Reset clears BOTH ``id`` and ``view`` so "← Start a new prompt" always
+  // lands on the form regardless of which page triggered it.
+  const handleReset = useCallback(() => {
+    setView(null)
+    setId(null)
+  }, [setId, setView])
+  const handleOpenTracker = useCallback(() => {
+    // Clear any lingering ``?id=`` so the tracker isn't shadowed by a viewer.
+    setId(null)
+    setView('tracker')
+  }, [setId, setView])
+  // Opening a card from the tracker: clear ``view`` and set ``id`` so the
+  // viewer takes precedence.
+  const handleOpenGeneration = useCallback(
+    (openId: string) => {
+      setView(null)
+      setId(openId)
+    },
+    [setId, setView],
+  )
 
   let body: JSX.Element
   let subtitle: ReactNode
+  // A right-aligned nav link in the header, shown on every mode that isn't
+  // already the tracker (so the user always has a discoverable path to
+  // history without cluttering the tracker page itself).
+  let headerNav: ReactNode = null
   if (urlOverride) {
     body = <ModelViewer url={urlOverride} />
     subtitle = (
       <>
         Viewer override: <span className="uuid">{urlOverride}</span>
       </>
+    )
+    headerNav = (
+      <button className="link-button" onClick={handleOpenTracker}>
+        History →
+      </button>
     )
   } else if (id) {
     body = <GenerationView id={id} onReset={handleReset} />
@@ -89,16 +123,37 @@ export default function App() {
         Generation ID: <span className="uuid">{id}</span>
       </>
     )
+    headerNav = (
+      <button className="link-button" onClick={handleOpenTracker}>
+        History →
+      </button>
+    )
+  } else if (view === 'tracker') {
+    body = (
+      <TaskTracker
+        onOpen={handleOpenGeneration}
+        onNewPrompt={handleReset}
+      />
+    )
+    subtitle = 'generation history'
+    // No "History" link on the history page itself.
+    headerNav = null
   } else {
     body = <PromptForm onCreated={handleCreated} />
     subtitle = 'enter a prompt to generate a 3D preview'
+    headerNav = (
+      <button className="link-button" onClick={handleOpenTracker}>
+        History →
+      </button>
+    )
   }
 
   return (
     <div className="app">
       <header className="app-header">
         <strong>Text to 3D</strong>
-        <span className="muted">{subtitle}</span>
+        <span className="muted app-header-subtitle">{subtitle}</span>
+        {headerNav && <div className="app-header-nav">{headerNav}</div>}
       </header>
       <main className="app-main">{body}</main>
     </div>

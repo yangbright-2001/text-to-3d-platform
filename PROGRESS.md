@@ -2,7 +2,7 @@
 
 ## Current Status
 
-M1–M8 complete. The full user story now works end-to-end: submit a prompt → watch preview progress → view the untextured model → click "Refine with textures" → watch refine progress → view the textured model. Both stages tracked independently on one row, refine failure keeps preview viewable.
+M1–M9 complete. The full user story now works end-to-end and the app has a browsable history: submit a prompt → watch preview progress → view the untextured model → click "Refine with textures" → watch refine progress → view the textured model. A **Task Tracker** page (linked as "History →" from every non-tracker view) lists every past generation with its thumbnail and current status; clicking a card reopens it in the viewer via `?id=<uuid>`. Both preview and refine stages remain tracked independently on one row, and a failed refine still keeps the preview viewable.
 
 ## Completed Features
 
@@ -17,16 +17,21 @@ M1–M8 complete. The full user story now works end-to-end: submit a prompt → 
   - Backend: `POST /api/generations/{id}/refine` in `routes.py` — 404/409/500 guards + REFINE_PENDING first-commit → Meshy call → REFINE_IN_PROGRESS + `_spawn_refine_watcher`. `watcher.py` refactored: `_apply_failure` / `_finalize_failure` now take an explicit `target` status so both stages share failure paths without conditionals; added `watch_refine` + `_load_refine_task_id` / `_apply_refine_snapshot` / `_download_refine_assets` as structural twins of the preview versions. Refine writes `refine.glb` alongside `preview.glb` under the same `<gen_id>/` directory and overwrites `thumbnail.png` with the textured version when Meshy returns one. `REFINE_MESHY_PARAMS` recorded additively under `meshy_params["refine"]` so history stays self-describing without breaking existing rows.
   - Frontend: `api.ts` gets `refineGeneration(id)`; `GenerationView.tsx` shows a "Refine with textures" button when status is `PREVIEW_SUCCEEDED`, overlays a `RefineOverlay` progress ribbon on the preview viewer while refine runs, and shows a non-fatal red banner on `REFINE_FAILED` while keeping preview interactive (PLAN.md: "A failed refine does not invalidate the viewable preview").
   - Polling lifecycle fix caught during M8 smoke test: the M7 poll effect keyed only on `[id]` never restarted after reaching a terminal state, so clicking refine (which moves the row from `PREVIEW_SUCCEEDED` back to non-terminal) left the progress bar frozen at 0% until manual reload. Fixed by keying the effect on `[id, isPolling]` where `isPolling = !gen || !isTerminal(gen.status)` — turning terminal into non-terminal via user action now naturally re-triggers the effect and resumes polling.
+- **M9 — Task Tracker page**:
+  - Frontend-only build: the backend's `GET /api/generations` (M5, newest-first with `/files/...` URLs) already returned everything the tracker needs.
+  - `api.ts` gets `listGenerations()`; new `src/TaskTracker.tsx` renders a responsive card grid (`repeat(auto-fill, minmax(220px, 1fr))`) with thumbnail (or a status-colored placeholder for rows without one), 2-line-clamped prompt, status pill, and a same-day-time / older-date timestamp. Each card is a semantic `<button>` so Tab/Enter open it — keyboard-nav for free.
+  - Auto-refresh: the tracker polls the list every 3s while any row is non-terminal, and cleanly stops once every row settles (effect keyed on `anyInFlight`). A manual "Refresh" button is always available; refresh failures show a banner while leaving the last-known list rendered.
+  - `App.tsx` gains a `?view=tracker` mode with precedence `?url=` > `?id=` > `?view=tracker` > form. A "History →" link is rendered in a new right-aligned header nav on every non-tracker view; clicking a card sets `?id=<uuid>` (clearing `view` first) so the viewer takes over. "← Start a new prompt" from either tracker or viewer clears both params, so the form is always reachable in one click.
+  - Styles: new `.task-tracker*` block in `styles.css` (grid, card, thumb, placeholder, focus outline). Reused existing `.status-*` pill classes so the tracker and `GenerationView` share status colouring — one source of truth for status vocabulary.
 - Non-code: architecture plan in `PLAN.md`; workflow rules in `.cursor/rules/project.mdc`.
 
 ## Current Feature
 
-- None in progress. M8 done and validated; awaiting go-ahead for **M9 — Task Tracker page**.
+- None in progress. M9 done and validated; awaiting go-ahead for **M10 — Robustness and polish**.
 
 ## Next Steps
 
-1. M9: Task Tracker page — list newest-first with thumbnail + timestamp + status pill; click a row to load its `?id=` view. All backend endpoints already ship what's needed (`GET /api/generations` with `/files/...` URLs).
-2. M10: startup reconciliation for in-flight rows, UI failure-state polish, README finalization with trade-offs and test-mode instructions.
+1. M10: startup reconciliation for in-flight rows (re-spawn watchers on boot for any `*_PENDING` / `*_IN_PROGRESS` row — endpoint code already commits well-defined pending states specifically for this handoff), UI failure-state polish (R3F error boundary, tracker-side visibility of failure reasons), README finalization with trade-offs and test-mode instructions.
 
 ## Key Engineering Decisions
 
@@ -44,7 +49,9 @@ M1–M8 complete. The full user story now works end-to-end: submit a prompt → 
 - Vite dev-server proxies `/api` and `/files` to the FastAPI backend so no CORS config is needed. Same-origin in prod once the SPA is served alongside the API.
 - Frontend types for the generations API are hand-mirrored from `schemas.py` in `frontend/src/api.ts`. Deliberately not using OpenAPI codegen.
 - Terminal-state detection uses a suffix check (`_SUCCEEDED` / `_FAILED`). During M8 we learned this handles the *middle* of a refine (REFINE_IN_PROGRESS keeps polling naturally) but does NOT handle the *restart* — the poll effect had to be re-keyed on `[id, isPolling]` so user actions that move a terminal row back to non-terminal (i.e., clicking refine on a PREVIEW_SUCCEEDED row) restart the loop.
-- Current generation id lives in the URL as `?id=<uuid>` (via `history.pushState`), giving cheap reload-survival and browser-back-to-form without introducing localStorage.
+- Current generation id lives in the URL as `?id=<uuid>` (via `history.pushState`), giving cheap reload-survival and browser-back-to-form without introducing localStorage. M9 layered a `?view=tracker` mode alongside it rather than a full router, keeping the URL-driven navigation model uniform.
+- M9 tracker auto-refresh keys the polling effect on `anyInFlight` (derived from `rows.some(!isTerminal)`) so an idle history page stops polling automatically once every row settles — same "stop when there's nothing to see" contract used by `GenerationView`.
+- Frontend `humanize(status)` is duplicated between `GenerationView` and `TaskTracker` deliberately: three lines of `switch` don't justify a cross-component dependency, and the two views may want to diverge later (e.g., "just now" for freshly created rows on the tracker).
 - No frontend unit tests yet — logic is small and manually verified against the real backend with Meshy's test-mode key. Reconsider once hooks/state get more complex.
 - Meshy client is dependency-injected; automated tests mock it (no real credits consumed).
 - Tests use a temporary SQLite per test via dependency override — never the production `data/app.db`.
@@ -52,9 +59,9 @@ M1–M8 complete. The full user story now works end-to-end: submit a prompt → 
 
 ## Validation
 
-- `pytest` in `backend/`: **38 tests passing** — 1 health + 5 model + 7 Meshy client + 9 watcher (5 preview + 4 refine) + 13 generation-endpoint (M4/M5 read/write + 4 refine) + 3 file-serving.
-- `npm run build` in `frontend/`: passes (`tsc -b && vite build`) — TypeScript strict-mode clean; production bundle ~1.1 MB / ~317 KB gzipped.
-- Manual live smoke tests (M5–M7) with real Meshy key: preview → download → viewer path verified against real Meshy. M8 pending manual verification with real key (see checklist below).
+- `pytest` in `backend/`: **38 tests passing** — 1 health + 5 model + 7 Meshy client + 9 watcher (5 preview + 4 refine) + 13 generation-endpoint (M4/M5 read/write + 4 refine) + 3 file-serving. M9 introduced no backend changes so the suite is unchanged.
+- `npm run build` in `frontend/`: passes after M9 (`tsc -b && vite build`) — TypeScript strict-mode clean; production bundle ~1.13 MB / ~317 KB gzipped (essentially unchanged from M8, since three.js + drei still dominate).
+- Manual live smoke tests (M5–M7) with real Meshy key: preview → download → viewer path verified against real Meshy. M8 + M9 pending manual verification with the real key (see checklist below).
 - Zero real Meshy calls in the automated suite (unit: `respx`; integration: `FakeMeshyClient`).
 - Verified `.env`, `data/`, `.venv/`, `node_modules/`, `dist/`, and TypeScript build-info files are git-ignored.
 
@@ -64,5 +71,6 @@ M1–M8 complete. The full user story now works end-to-end: submit a prompt → 
 - Refine is one-shot: `REFINE_FAILED` is terminal per the state machine. A user who wants to retry must generate a new preview. Matches PLAN's "task deletion/cancellation is out of scope".
 - No error boundary around the R3F canvas: if `useGLTF` fails to load, the canvas stays empty but the status bar still communicates what's happening. Proper viewer error UX is M10 polish.
 - Single-process design means in-flight watcher state is memory-held between DB writes; acceptable given planned startup reconciliation (M10). A crash mid-download requires re-fetching from Meshy (fine within retention window).
-- Frontend bundle size (~1.1 MB before gzip / ~317 KB gzipped) is dominated by three.js + drei. Acceptable for an internal/demo app; code-splitting can be added later if needed.
+- Frontend bundle size (~1.13 MB before gzip / ~317 KB gzipped) is dominated by three.js + drei. Acceptable for an internal/demo app; code-splitting can be added later if needed.
 - The 3s poll cadence + 5s backend Meshy poll mean progress may briefly appear stuck between updates. The progress-bar CSS transition smooths this visually.
+- Tracker thumbnails are best-effort: rows without a `thumbnail_url` (in-flight, or `PREVIEW_FAILED` before any image was ever downloaded) show a status-tinted placeholder. Not treated as an error state — the status pill already communicates what's happening.
