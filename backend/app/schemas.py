@@ -65,7 +65,7 @@ class GenerationRead(BaseModel):
             error=gen.error,
             preview_progress=gen.preview_progress,
             preview_model_url=_files_url(gen.preview_model_path),
-            thumbnail_url=_files_url(gen.thumbnail_path),
+            thumbnail_url=_thumbnail_url(gen.thumbnail_path, gen.updated_at),
             refine_progress=gen.refine_progress,
             refine_model_url=_files_url(gen.refine_model_path),
             created_at=gen.created_at,
@@ -76,3 +76,16 @@ class GenerationRead(BaseModel):
 def _files_url(relative_path: Optional[str]) -> Optional[str]:
     """Prepend the app's static-files mount to a relative asset path."""
     return f"/files/{relative_path}" if relative_path else None
+
+
+def _thumbnail_url(relative_path: Optional[str], updated_at: datetime) -> Optional[str]:
+    """Like ``_files_url`` but cache-busted with ``updated_at``.
+
+    Preview and refine overwrite the same ``thumbnail.png`` path. Without a
+    changing query string the browser keeps showing the preview thumbnail
+    after a successful refine.
+    """
+    if not relative_path:
+        return None
+    token = updated_at.strftime("%Y%m%d%H%M%S")
+    return f"/files/{relative_path}?v={token}"

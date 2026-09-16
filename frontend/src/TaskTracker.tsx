@@ -138,8 +138,8 @@ interface CardProps {
  * the thumbnail. A div sizes to its contents; we keep button semantics
  * with role/tabIndex/Enter-Space.
  *
- * Caption is always three left-aligned lines (prompt / status / time) so
- * every card in a row has the same height.
+ * Caption is prompt / status / last-updated time (updated_at, so a refine
+ * moves the card's clock and sort position). Failed rows add an error line.
  */
 function TaskCard({ row, onOpen }: CardProps) {
   function activate() {
@@ -158,9 +158,11 @@ function TaskCard({ row, onOpen }: CardProps) {
           activate()
         }
       }}
-      // The prompt is the most useful hover-tooltip: prompts are often
-      // longer than the card body can show without ellipsis.
-      title={row.prompt}
+      title={
+        row.error
+          ? `${row.prompt}\n\n${row.error}`
+          : row.prompt
+      }
     >
       <div className="task-card-thumb">
         {row.thumbnail_url ? (
@@ -174,9 +176,12 @@ function TaskCard({ row, onOpen }: CardProps) {
         <span className={`status status-${row.status.toLowerCase()}`}>
           {statusLabel(row)}
         </span>
-        <time className="muted task-card-time" dateTime={row.created_at}>
-          {formatTimestamp(row.created_at)}
+        <time className="muted task-card-time" dateTime={row.updated_at}>
+          {formatTimestamp(row.updated_at)}
         </time>
+        {row.error && (
+          <div className="task-card-error">{row.error}</div>
+        )}
       </div>
     </div>
   )

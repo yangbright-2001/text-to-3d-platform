@@ -7,9 +7,14 @@ all sessions to the same connection so the ephemeral in-memory DB is visible
 across the test's operations.
 """
 
+import os
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
+
+# Prevent FastAPI lifespan (used by the health TestClient) from scanning the
+# developer's on-disk ``data/app.db`` or calling Meshy during pytest.
+os.environ.setdefault("TEXT3D_SKIP_RECONCILE", "1")
 
 import pytest
 from sqlalchemy import create_engine

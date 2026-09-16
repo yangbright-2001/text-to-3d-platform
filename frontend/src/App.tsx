@@ -48,6 +48,19 @@ function useQueryParam(
   return [value, update]
 }
 
+/** One history entry that replaces the whole query string, then syncs
+ *  every ``useQueryParam`` via popstate. Needed because each hook's
+ *  setter only mutates *its* key and would leave a leftover ``?url=``
+ *  (which outranks ``?view=tracker``) when opening history from a
+ *  debug override. */
+function replaceQuery(search: string): void {
+  const nextUrl = `${window.location.pathname}${search}`
+  const current = `${window.location.pathname}${window.location.search}`
+  if (current === nextUrl) return
+  window.history.pushState({}, '', nextUrl)
+  window.dispatchEvent(new PopStateEvent('popstate'))
+}
+
 /**
  * Top-level router between the app's URL-driven modes.
  *
@@ -62,39 +75,25 @@ function useQueryParam(
  */
 export default function App() {
   const [id, setId] = useQueryParam('id')
-  const [view, setView] = useQueryParam('view')
+  const [view] = useQueryParam('view')
   // Same hook as id/view so "Text to 3D" → home can clear a ``?url=`` debug
   // override via one pushState + popstate, without a leftover frozen memo.
   const [urlOverride] = useQueryParam('url')
 
   const handleCreated = useCallback((newId: string) => setId(newId), [setId])
-  // Reset clears BOTH ``id`` and ``view`` so "Start a new prompt" always
-  // lands on the form regardless of which page triggered it.
-  const handleReset = useCallback(() => {
-    setView(null)
-    setId(null)
-  }, [setId, setView])
+  // Bare ``/`` so a leftover ``?url=`` debug override cannot keep the
+  // viewer on screen after "Start a new prompt".
+  const handleReset = useCallback(() => replaceQuery(''), [])
   const handleOpenTracker = useCallback(() => {
-    // Clear any lingering ``?id=`` so the tracker isn't shadowed by a viewer.
-    setId(null)
-    setView('tracker')
-  }, [setId, setView])
-  // Opening a card from the tracker: clear ``view`` and set ``id`` so the
-  // viewer takes precedence.
-  const handleOpenGeneration = useCallback(
-    (openId: string) => {
-      setView(null)
-      setId(openId)
-    },
-    [setId, setView],
-  )
-  // Title click: one history entry to bare ``/``, then let the existing
-  // popstate listeners sync id/view/url from the empty query string.
-  const handleGoHome = useCallback(() => {
-    if (!window.location.search) return
-    window.history.pushState({}, '', window.location.pathname)
-    window.dispatchEvent(new PopStateEvent('popstate'))
+    // Replace the whole query: ``?url=`` outranks ``?view=tracker``, so
+    // adding view while leaving url set looks like a no-op (URL changes,
+    // page does not).
+    replaceQuery('?view=tracker')
   }, [])
+  const handleOpenGeneration = useCallback((openId: string) => {
+    replaceQuery(`?id=${encodeURIComponent(openId)}`)
+  }, [])
+  const handleGoHome = useCallback(() => replaceQuery(''), [])
 
   let body: JSX.Element
   let subtitle: ReactNode

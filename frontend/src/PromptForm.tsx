@@ -47,7 +47,7 @@ export default function PromptForm({ onCreated }: Props) {
         value={prompt}
         onChange={e => setPrompt(e.target.value)}
         maxLength={800}
-        rows={4}
+        rows={8}
         placeholder="e.g. a small yellow rubber duck"
         disabled={submitting}
         autoFocus

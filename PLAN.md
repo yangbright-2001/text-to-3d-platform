@@ -77,4 +77,4 @@ One feature at a time; each milestone ends in a working, tested state and its ow
 - [x] **M7 — Generate flow end-to-end**: prompt form, status polling, progress display, preview model shown on completion.
 - [x] **M8 — Explicit refine**: refine endpoint and watcher reuse; "Refine with textures" button; textured model replaces preview in the viewer.
 - [x] **M9 — Task Tracker page**: generation history with statuses, thumbnails, and click-through to the viewer.
-- [ ] **M10 — Robustness and polish**: startup reconciliation, failure states in the UI, README finalization with trade-offs and test-mode instructions.
+- [x] **M10 — Robustness and polish**: startup reconciliation, failure states in the UI, README finalization with trade-offs and test-mode instructions.

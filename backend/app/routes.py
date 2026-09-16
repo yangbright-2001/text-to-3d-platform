@@ -9,7 +9,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -24,8 +23,8 @@ from .schemas import GenerationCreate, GenerationRead
 from .watcher import (
     PREVIEW_MESHY_PARAMS,
     REFINE_MESHY_PARAMS,
-    watch_preview,
-    watch_refine,
+    spawn_preview_watcher,
+    spawn_refine_watcher,
 )
 
 log = logging.getLogger(__name__)
@@ -82,19 +81,20 @@ async def create_generation(
     session.refresh(gen)
 
     # 4. Fire and forget the polling watcher on the running event loop.
-    _spawn_preview_watcher(request, gen.id)
+    spawn_preview_watcher(request.app, gen.id)
 
     return GenerationRead.from_generation(gen)
 
 
 @router.get("", response_model=list[GenerationRead])
 def list_generations(session: Session = Depends(get_session)) -> list[GenerationRead]:
-    """Return all generations, newest first — the Task Tracker's data source."""
+    """Return all generations, most recently updated first — the Task Tracker's data source."""
+    # Sort by updated_at so a refine of an older preview jumps to the front.
     # Secondary sort by id keeps ordering stable when two rows share a
     # timestamp (possible in fast tests running under one millisecond).
     rows = session.execute(
         select(Generation).order_by(
-            Generation.created_at.desc(), Generation.id.desc()
+            Generation.updated_at.desc(), Generation.id.desc()
         )
     ).scalars().all()
     return [GenerationRead.from_generation(g) for g in rows]
@@ -188,43 +188,6 @@ async def refine_generation(
     session.refresh(gen)
 
     # 4. Fire and forget the refine watcher.
-    _spawn_refine_watcher(request, gen.id)
+    spawn_refine_watcher(request.app, gen.id)
 
     return GenerationRead.from_generation(gen)
-
-
-def _spawn_preview_watcher(request: Request, gen_id: str) -> None:
-    """Schedule a preview watcher on the app's event loop.
-
-    Keeps a strong reference in ``app.state.background_tasks`` so the task is
-    not GC'd while running — this is the recommended pattern for
-    ``asyncio.create_task`` fire-and-forget usage.
-    """
-    app = request.app
-    task = asyncio.create_task(
-        watch_preview(
-            gen_id=gen_id,
-            meshy=app.state.meshy_client,
-            session_factory=app.state.session_factory,
-            models_dir=app.state.models_dir,
-            poll_interval=app.state.watcher_poll_interval,
-        )
-    )
-    app.state.background_tasks.add(task)
-    task.add_done_callback(app.state.background_tasks.discard)
-
-
-def _spawn_refine_watcher(request: Request, gen_id: str) -> None:
-    """Structural twin of ``_spawn_preview_watcher`` for the refine stage."""
-    app = request.app
-    task = asyncio.create_task(
-        watch_refine(
-            gen_id=gen_id,
-            meshy=app.state.meshy_client,
-            session_factory=app.state.session_factory,
-            models_dir=app.state.models_dir,
-            poll_interval=app.state.watcher_poll_interval,
-        )
-    )
-    app.state.background_tasks.add(task)
-    task.add_done_callback(app.state.background_tasks.discard)

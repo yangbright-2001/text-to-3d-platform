@@ -3,8 +3,9 @@
 React + Vite + TypeScript SPA with a React Three Fiber viewer.
 
 Scaffolded in **M6**: renders a bundled sample GLB (`public/sample.glb`, the
-Khronos glTF Box sample) to prove the R3F pipeline works. Later milestones
-wire up the prompt form (M7), refine button (M8), and task tracker (M9).
+Khronos glTF Box sample) to prove the R3F pipeline works. M7–M9 wire the
+prompt form, refine button, and generation history. M10 adds a loading
+overlay and an error boundary around the viewer.
 
 ## Setup
 

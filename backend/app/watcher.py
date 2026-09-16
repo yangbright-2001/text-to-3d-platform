@@ -20,10 +20,13 @@ Design choices (see PLAN.md):
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import os
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .meshy import (
@@ -82,7 +85,6 @@ async def watch_preview(
     ``gen_id`` is our application-level id; the Meshy task id is read from
     the DB row so a restarted watcher (M10) does not need it passed in.
     """
-    import asyncio  # local import keeps module import cheap for non-async callers
 
     task_id = _load_preview_task_id(session_factory, gen_id)
     if task_id is None:
@@ -134,7 +136,6 @@ async def watch_refine(
     ``preview_model_path`` intact — we only clear/replace the refine-specific
     fields.
     """
-    import asyncio
 
     task_id = _load_refine_task_id(session_factory, gen_id)
     if task_id is None:
@@ -421,3 +422,142 @@ async def _download_refine_assets(
         if can_transition(gen.status, GenerationStatus.REFINE_SUCCEEDED):
             gen.status = GenerationStatus.REFINE_SUCCEEDED
         session.commit()
+
+
+# ---------------------------------------------------------------------------
+# Spawn helpers + startup reconciliation (M10).
+# ---------------------------------------------------------------------------
+
+# Statuses whose watcher may have died with the process. Terminal rows are
+# left alone — there is nothing to poll.
+_IN_FLIGHT: frozenset[GenerationStatus] = frozenset(
+    {
+        GenerationStatus.PREVIEW_PENDING,
+        GenerationStatus.PREVIEW_IN_PROGRESS,
+        GenerationStatus.REFINE_PENDING,
+        GenerationStatus.REFINE_IN_PROGRESS,
+    }
+)
+
+_PREVIEW_IN_FLIGHT: frozenset[GenerationStatus] = frozenset(
+    {GenerationStatus.PREVIEW_PENDING, GenerationStatus.PREVIEW_IN_PROGRESS}
+)
+_REFINE_IN_FLIGHT: frozenset[GenerationStatus] = frozenset(
+    {GenerationStatus.REFINE_PENDING, GenerationStatus.REFINE_IN_PROGRESS}
+)
+
+# Tests set this so TestClient(lifespan) never scans the developer's
+# production ``data/app.db`` or calls Meshy. Real uvicorn runs do reconcile.
+SKIP_RECONCILE_ENV = "TEXT3D_SKIP_RECONCILE"
+
+
+def spawn_preview_watcher(app: Any, gen_id: str) -> None:
+    """Fire-and-forget ``watch_preview`` on the running event loop.
+
+    Used by the create endpoint and by startup reconciliation. ``app`` is
+    the FastAPI app (or a test double with the same ``.state`` fields).
+    """
+    state = app.state
+    task = asyncio.create_task(
+        watch_preview(
+            gen_id=gen_id,
+            meshy=state.meshy_client,
+            session_factory=state.session_factory,
+            models_dir=state.models_dir,
+            poll_interval=state.watcher_poll_interval,
+        )
+    )
+    state.background_tasks.add(task)
+    task.add_done_callback(state.background_tasks.discard)
+
+
+def spawn_refine_watcher(app: Any, gen_id: str) -> None:
+    """Structural twin of ``spawn_preview_watcher`` for the refine stage."""
+    state = app.state
+    task = asyncio.create_task(
+        watch_refine(
+            gen_id=gen_id,
+            meshy=state.meshy_client,
+            session_factory=state.session_factory,
+            models_dir=state.models_dir,
+            poll_interval=state.watcher_poll_interval,
+        )
+    )
+    state.background_tasks.add(task)
+    task.add_done_callback(state.background_tasks.discard)
+
+
+def reconcile_in_flight(app: Any) -> None:
+    """Respawn watchers for every non-terminal generation in SQLite.
+
+    Called from FastAPI lifespan after ``app.state`` is populated. Policy:
+      * ``*_IN_PROGRESS`` (and ``*_PENDING``) **with** a Meshy task id →
+        respawn the matching watcher. The watcher reads the id from the row.
+      * ``*_PENDING`` **without** a task id → the process died after the
+        first commit and before Meshy accepted the task. We do **not**
+        retry ``create_*_task`` (that could double-charge if Meshy actually
+        accepted and we crashed before writing the id). Mark the row failed
+        instead. A failed refine still keeps the preview viewable.
+      * Terminal rows → ignored.
+    """
+    session_factory: SessionFactory = app.state.session_factory
+    snapshots: list[tuple[str, GenerationStatus, str | None, str | None]] = []
+    with session_factory() as session:
+        rows = session.execute(
+            select(
+                Generation.id,
+                Generation.status,
+                Generation.preview_task_id,
+                Generation.refine_task_id,
+            ).where(Generation.status.in_(_IN_FLIGHT))
+        ).all()
+        snapshots = [
+            (row.id, row.status, row.preview_task_id, row.refine_task_id)
+            for row in rows
+        ]
+
+    if not snapshots:
+        return
+
+    log.info("startup reconciliation: %d in-flight generation(s)", len(snapshots))
+    for gen_id, status, preview_task_id, refine_task_id in snapshots:
+        if status in _PREVIEW_IN_FLIGHT:
+            if preview_task_id:
+                log.info("respawning preview watcher for %s (%s)", gen_id, status.value)
+                spawn_preview_watcher(app, gen_id)
+            else:
+                log.warning(
+                    "preview %s was %s with no Meshy task id; marking failed",
+                    gen_id,
+                    status.value,
+                )
+                _finalize_failure(
+                    session_factory,
+                    gen_id,
+                    "Interrupted before Meshy accepted the preview task",
+                    target=GenerationStatus.PREVIEW_FAILED,
+                )
+        elif status in _REFINE_IN_FLIGHT:
+            if refine_task_id:
+                log.info("respawning refine watcher for %s (%s)", gen_id, status.value)
+                spawn_refine_watcher(app, gen_id)
+            else:
+                log.warning(
+                    "refine %s was %s with no Meshy task id; marking failed",
+                    gen_id,
+                    status.value,
+                )
+                _finalize_failure(
+                    session_factory,
+                    gen_id,
+                    "Interrupted before Meshy accepted the refine task",
+                    target=GenerationStatus.REFINE_FAILED,
+                )
+
+
+def maybe_reconcile_in_flight(app: Any) -> None:
+    """Lifespan entry: skip when tests set ``TEXT3D_SKIP_RECONCILE=1``."""
+    if os.environ.get(SKIP_RECONCILE_ENV) == "1":
+        log.debug("startup reconciliation skipped (%s=1)", SKIP_RECONCILE_ENV)
+        return
+    reconcile_in_flight(app)

@@ -1,14 +1,13 @@
-import { Suspense } from 'react'
+import { Component, ReactNode, Suspense } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { OrbitControls, Stage, useGLTF } from '@react-three/drei'
+import { Html, OrbitControls, Stage, useGLTF } from '@react-three/drei'
 
 /**
  * Loads and renders a GLB from `url`.
  *
  * `useGLTF` suspends until the model is fetched + parsed, so this component
  * must live inside a `<Suspense>` boundary (see the parent below). Drei's
- * `<Stage>` handles centering, framing, and neutral lighting automatically —
- * enough for the M6 milestone where the only goal is "does a GLB render".
+ * `<Stage>` handles centering, framing, and neutral lighting automatically.
  */
 function GLBModel({ url }: { url: string }) {
   const { scene } = useGLTF(url)
@@ -17,37 +16,60 @@ function GLBModel({ url }: { url: string }) {
   return <primitive object={scene} />
 }
 
-interface ModelViewerProps {
-  url: string
+/**
+ * Catches `useGLTF` / R3F failures so a missing or corrupt file shows a
+ * message instead of an empty canvas (M10). Remount with ``key={url}`` when
+ * the generation swaps preview → refine.
+ */
+class ViewerErrorBoundary extends Component<
+  { children: ReactNode },
+  { error: Error | null }
+> {
+  state: { error: Error | null } = { error: null }
+
+  static getDerivedStateFromError(error: Error) {
+    return { error }
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="viewer-error" role="alert">
+          Could not load this 3D model. The file may be missing or damaged.
+        </div>
+      )
+    }
+    return this.props.children
+  }
 }
 
-/**
- * Full-viewport R3F canvas with orbit controls and a suspense fallback.
- *
- * Kept intentionally simple: no error boundary, no loading spinner beyond a
- * plain text overlay — later milestones can wrap this with better UX once we
- * have real generation flows to react to (M7+).
- */
-export default function ModelViewer({ url }: ModelViewerProps) {
+function LoadingFallback() {
   return (
-    <Canvas
-      // A soft off-black background reads well against the dark app chrome.
-      style={{ background: '#1a1a1a' }}
-      camera={{ position: [3, 2, 3], fov: 45 }}
-    >
-      <Suspense fallback={null}>
-        {/* Stage auto-frames the model and adds neutral studio lighting. */}
-        <Stage adjustCamera intensity={0.6} environment="city">
-          <GLBModel url={url} />
-        </Stage>
-      </Suspense>
-      {/* Orbit for user-controlled inspection; damping feels smoother. */}
-      <OrbitControls makeDefault enableDamping />
-    </Canvas>
+    <Html center>
+      <div className="viewer-loading">Loading model…</div>
+    </Html>
   )
 }
 
-// Preload hint: not strictly needed for a single default model, but useful
-// once M7 starts swapping URLs. Kept commented to avoid firing a request for
-// the sample file when the user has already provided `?url=`.
-// useGLTF.preload('/sample.glb')
+/**
+ * Full-viewport R3F canvas with orbit controls, a loading overlay, and an
+ * error boundary so a bad GLB does not blank the page.
+ */
+export default function ModelViewer({ url }: { url: string }) {
+  return (
+    <ViewerErrorBoundary key={url}>
+      <Canvas
+        // A soft off-black background reads well against the dark app chrome.
+        style={{ background: '#1a1a1a' }}
+        camera={{ position: [3, 2, 3], fov: 45 }}
+      >
+        <Suspense fallback={<LoadingFallback />}>
+          <Stage adjustCamera intensity={0.6} environment="city">
+            <GLBModel url={url} />
+          </Stage>
+        </Suspense>
+        <OrbitControls makeDefault enableDamping />
+      </Canvas>
+    </ViewerErrorBoundary>
+  )
+}

@@ -22,7 +22,7 @@ from .config import get_settings
 from .db import SessionLocal, init_db
 from .meshy import MeshyClient
 from .routes import router as generations_router
-from .watcher import DEFAULT_POLL_INTERVAL_S
+from .watcher import DEFAULT_POLL_INTERVAL_S, maybe_reconcile_in_flight
 
 settings = get_settings()
 
@@ -46,6 +46,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # without mutating the ``Settings`` singleton.
     app.state.watcher_poll_interval = DEFAULT_POLL_INTERVAL_S
     app.state.models_dir = settings.models_dir
+
+    # Re-attach watchers for anything still in flight from a previous process.
+    maybe_reconcile_in_flight(app)
 
     try:
         yield
