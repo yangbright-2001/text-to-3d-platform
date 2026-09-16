@@ -74,7 +74,7 @@ One feature at a time; each milestone ends in a working, tested state and its ow
 - [x] **M4 — Preview generation flow**: `POST /api/generations`, background watcher, GLB + thumbnail download on success, full lifecycle tests against a fake Meshy client.
 - [x] **M5 — Read endpoints and file serving**: list and detail endpoints, static serving of downloaded models.
 - [x] **M6 — Frontend scaffold and 3D viewer**: Vite + React + R3F app rendering a sample GLB.
-- [ ] **M7 — Generate flow end-to-end**: prompt form, status polling, progress display, preview model shown on completion.
+- [x] **M7 — Generate flow end-to-end**: prompt form, status polling, progress display, preview model shown on completion.
 - [ ] **M8 — Explicit refine**: refine endpoint and watcher reuse; "Refine with textures" button; textured model replaces preview in the viewer.
 - [ ] **M9 — Task Tracker page**: generation history with statuses, thumbnails, and click-through to the viewer.
 - [ ] **M10 — Robustness and polish**: startup reconciliation, failure states in the UI, README finalization with trade-offs and test-mode instructions.
