@@ -6,10 +6,17 @@ background-task registry) live on ``app.state`` so watchers spawned by the
 endpoint layer can pick them up without going through FastAPI's request DI.
 """
 
+import mimetypes
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse
+
+# Register 3D asset MIME types up front — Python's default ``mimetypes`` DB
+# doesn't include glTF, which would otherwise serve GLBs as ``text/plain``.
+mimetypes.add_type("model/gltf-binary", ".glb")
+mimetypes.add_type("model/gltf+json", ".gltf")
 
 from .config import get_settings
 from .db import SessionLocal, init_db
@@ -62,3 +69,26 @@ def health() -> dict[str, str]:
         "app": settings.app_name,
         "meshy_key_configured": "true" if settings.meshy_api_key else "false",
     }
+
+
+@app.get("/files/{path:path}", include_in_schema=False)
+def serve_generated_file(path: str, request: Request) -> FileResponse:
+    """Serve a downloaded model or thumbnail from the local models directory.
+
+    Reads the root from ``request.app.state.models_dir`` (populated by the
+    lifespan) so tests can point it at a temp directory without touching
+    production data. Path-traversal is rejected by resolving the target and
+    ensuring it stays inside ``models_dir``.
+    """
+    root = request.app.state.models_dir
+    # Resolve both sides so ``..`` segments and symlinks are normalized before
+    # the containment check.
+    target = (root / path).resolve()
+    try:
+        target.relative_to(root.resolve())
+    except ValueError:
+        # ``path`` escapes ``models_dir`` — deny without leaking why.
+        raise HTTPException(status_code=404, detail="file not found")
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="file not found")
+    return FileResponse(target)

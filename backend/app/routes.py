@@ -1,7 +1,8 @@
 """HTTP routes for generations.
 
-M4 adds ``POST /api/generations``. List/detail endpoints and refine follow in
-M5 and M8 respectively.
+M4 shipped ``POST /api/generations``. M5 adds list + detail read endpoints
+and starts returning ``/files/...`` URLs (not raw paths) via
+``GenerationRead.from_generation``.
 """
 
 from __future__ import annotations
@@ -9,7 +10,8 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .db import get_session
@@ -34,7 +36,7 @@ async def create_generation(
     request: Request,
     session: Session = Depends(get_session),
     meshy: MeshyClient = Depends(get_meshy_client),
-) -> Generation:
+) -> GenerationRead:
     """Submit a prompt and start a preview generation.
 
     Returns immediately with the current app-level row. If Meshy rejects the
@@ -62,7 +64,7 @@ async def create_generation(
         gen.error = f"Failed to create Meshy task: {exc}"
         session.commit()
         session.refresh(gen)
-        return gen
+        return GenerationRead.from_generation(gen)
 
     # 3. Advance to PREVIEW_IN_PROGRESS and remember the parameters we sent so
     # historical rows stay self-describing if defaults change later.
@@ -75,7 +77,31 @@ async def create_generation(
     # 4. Fire and forget the polling watcher on the running event loop.
     _spawn_preview_watcher(request, gen.id)
 
-    return gen
+    return GenerationRead.from_generation(gen)
+
+
+@router.get("", response_model=list[GenerationRead])
+def list_generations(session: Session = Depends(get_session)) -> list[GenerationRead]:
+    """Return all generations, newest first — the Task Tracker's data source."""
+    # Secondary sort by id keeps ordering stable when two rows share a
+    # timestamp (possible in fast tests running under one millisecond).
+    rows = session.execute(
+        select(Generation).order_by(
+            Generation.created_at.desc(), Generation.id.desc()
+        )
+    ).scalars().all()
+    return [GenerationRead.from_generation(g) for g in rows]
+
+
+@router.get("/{gen_id}", response_model=GenerationRead)
+def get_generation(
+    gen_id: str, session: Session = Depends(get_session)
+) -> GenerationRead:
+    """Return a single generation. This is the frontend's polling target."""
+    gen = session.get(Generation, gen_id)
+    if gen is None:
+        raise HTTPException(status_code=404, detail="generation not found")
+    return GenerationRead.from_generation(gen)
 
 
 def _spawn_preview_watcher(request: Request, gen_id: str) -> None:

@@ -1,4 +1,4 @@
-"""HTTP tests for ``POST /api/generations`` (M4).
+"""HTTP tests for the generations router (M4 POST, M5 GET list/detail).
 
 Bypasses the FastAPI lifespan (which would create a real Meshy client) by
 populating ``app.state`` manually inside a fixture; also overrides the
@@ -195,3 +195,105 @@ async def test_create_generation_rejects_empty_prompt(app_with_fakes) -> None:
     assert fake.create_preview_calls == []
     with TestingSession() as s:
         assert s.query(Generation).count() == 0
+
+
+# ---------------------------------------------------------------------------
+# M5 — Read endpoints.
+# ---------------------------------------------------------------------------
+
+
+async def test_list_generations_returns_newest_first(app_with_fakes) -> None:
+    """List orders by ``created_at DESC`` so the newest row appears first."""
+    from datetime import datetime, timezone
+
+    app_, _, TestingSession = app_with_fakes
+    older = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    newer = datetime(2025, 6, 1, tzinfo=timezone.utc)
+    with TestingSession() as s:
+        s.add(
+            Generation(
+                prompt="old", status=GenerationStatus.PREVIEW_SUCCEEDED,
+                created_at=older, updated_at=older,
+            )
+        )
+        s.add(
+            Generation(
+                prompt="new", status=GenerationStatus.PREVIEW_SUCCEEDED,
+                created_at=newer, updated_at=newer,
+            )
+        )
+        s.commit()
+
+    async for c in _client(app_):
+        r = await c.get("/api/generations")
+
+    assert r.status_code == 200
+    body = r.json()
+    assert [row["prompt"] for row in body] == ["new", "old"]
+
+
+async def test_list_generations_empty_returns_empty_array(app_with_fakes) -> None:
+    app_, _, _ = app_with_fakes
+    async for c in _client(app_):
+        r = await c.get("/api/generations")
+    assert r.status_code == 200
+    assert r.json() == []
+
+
+async def test_get_generation_returns_row_with_files_urls(app_with_fakes) -> None:
+    """Detail response converts internal ``_path`` DB columns into ``/files/`` URLs."""
+    app_, _, TestingSession = app_with_fakes
+    with TestingSession() as s:
+        gen = Generation(
+            prompt="p",
+            status=GenerationStatus.PREVIEW_SUCCEEDED,
+            preview_progress=100,
+            preview_model_path="abc/preview.glb",
+            thumbnail_path="abc/thumbnail.png",
+        )
+        s.add(gen)
+        s.commit()
+        gen_id = gen.id
+
+    async for c in _client(app_):
+        r = await c.get(f"/api/generations/{gen_id}")
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["id"] == gen_id
+    # URL fields prefixed with our own static mount, not raw filesystem paths.
+    assert body["preview_model_url"] == "/files/abc/preview.glb"
+    assert body["thumbnail_url"] == "/files/abc/thumbnail.png"
+    # Internal path columns must NOT leak on the wire.
+    assert "preview_model_path" not in body
+    assert "thumbnail_path" not in body
+    # Internal Meshy task ids must NOT leak either (regression guard from M4).
+    assert "preview_task_id" not in body
+
+
+async def test_get_generation_404_when_missing(app_with_fakes) -> None:
+    app_, _, _ = app_with_fakes
+    async for c in _client(app_):
+        r = await c.get("/api/generations/does-not-exist")
+    assert r.status_code == 404
+
+
+async def test_generation_read_urls_are_null_when_paths_are_null(
+    app_with_fakes,
+) -> None:
+    """A pending/in-progress row has no downloaded files yet — URLs must be null."""
+    app_, _, TestingSession = app_with_fakes
+    with TestingSession() as s:
+        gen = Generation(prompt="p", status=GenerationStatus.PREVIEW_PENDING)
+        s.add(gen)
+        s.commit()
+        gen_id = gen.id
+
+    async for c in _client(app_):
+        r = await c.get(f"/api/generations/{gen_id}")
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["preview_model_url"] is None
+    assert body["thumbnail_url"] is None
+    assert body["refine_model_url"] is None

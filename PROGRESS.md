@@ -2,25 +2,26 @@
 
 ## Current Status
 
-M1 + M2 + M3 + M4 complete. Backend now accepts `POST /api/generations`, creates the Meshy preview task, spawns an in-process asyncio watcher that polls Meshy, downloads the GLB + thumbnail, and drives the app-level state machine to `PREVIEW_SUCCEEDED`. All tests run against a `FakeMeshyClient` — no real Meshy credits consumed. **The backend's end-to-end preview flow is functional** and can be exercised with curl once a Meshy API key is provided.
+M1–M5 complete. The backend now exposes the full read/write surface the frontend will need: submit a prompt, poll one row, list history, and serve the downloaded GLB/thumbnail files back to browsers under `/files/...`. Manually verified against real Meshy (test-mode key) — end-to-end preview flow generates + downloads + serves correctly.
 
 ## Completed Features
 
 - **M1 — Project scaffold**: repo layout, FastAPI app with `GET /api/health`, config via pydantic-settings, pinned deps, `.env.example`, root `.gitignore` and `README.md`.
 - **M2 — Persistence layer**: SQLAlchemy 2.0 + SQLite; `Generation` model + `GenerationStatus` enum + `can_transition()`; `init_db()` in FastAPI lifespan; in-memory SQLite + `StaticPool` for test isolation.
-- **M3 — Meshy client**: `backend/app/meshy.py` exposes async `MeshyClient`, `MeshyTask`, `MeshyError`, plus policy constants (`meshy-6-lite`, GLB-only, PBR off, 2k textures). 7 respx-mocked tests.
-- **M4 — Preview generation flow**: `POST /api/generations` in `backend/app/routes.py`; async `watch_preview` in `backend/app/watcher.py` (polling + GLB/thumbnail download + state-machine advance + `PREVIEW_FAILED` policies); shared `MeshyClient` + session factory + background-task registry live on `app.state`; `FakeMeshyClient` in `tests/conftest.py`; Pydantic `GenerationCreate`/`GenerationRead` in `schemas.py` (internal fields like `preview_task_id` are NOT exposed on the wire); `deps.get_meshy_client` returns the app-scoped client.
+- **M3 — Meshy client**: `backend/app/meshy.py` — async `MeshyClient`, `MeshyTask`, `MeshyError`; policy constants (`meshy-6-lite`, GLB-only, PBR off, 2k textures). 7 respx-mocked tests.
+- **M4 — Preview generation flow**: `POST /api/generations` in `routes.py`; async `watch_preview` in `watcher.py`; shared `MeshyClient`/session factory/background-task registry on `app.state`; `FakeMeshyClient` in `conftest.py`; `GenerationCreate`/`GenerationRead` in `schemas.py` (internal fields hidden); `deps.get_meshy_client`.
+- **M5 — Read endpoints and file serving**: `GET /api/generations` (list, newest-first) and `GET /api/generations/{id}` (detail, 404 on missing); `GET /files/{path}` in `main.py` reads from `app.state.models_dir` with path-traversal defense; `GenerationRead.from_generation()` translates DB `_path` columns into public `/files/...` `_url` fields (raw paths never leak); MIME types registered for `.glb`/`.gltf`.
 - Non-code: architecture plan in `PLAN.md`; workflow rules in `.cursor/rules/project.mdc`.
 
 ## Current Feature
 
-- None in progress. M4 done and validated; awaiting go-ahead for **M5 — Read endpoints and file serving**.
+- None in progress. M5 done and validated; awaiting go-ahead for **M6 — Frontend scaffold and 3D viewer**.
 
 ## Next Steps
 
-1. **You can now create a Meshy API key** to manually exercise the backend if you want (via `curl`). Optional — automated tests need no key.
-2. M5: `GET /api/generations` list + `GET /api/generations/{id}` detail + static serving of `data/models/` under `/files/...`.
-3. Continue milestone by milestone (M6–M10) per `PLAN.md`.
+1. M6: Vite + React + TypeScript + React Three Fiber scaffold rendering a sample GLB — first frontend milestone.
+2. M7: wire the frontend prompt form + status polling to the backend endpoints M4/M5 shipped — first end-to-end interactive demo.
+3. Continue milestone by milestone (M8–M10) per `PLAN.md`.
 
 ## Key Engineering Decisions
 
@@ -36,9 +37,10 @@ M1 + M2 + M3 + M4 complete. Backend now accepts `POST /api/generations`, creates
 
 ## Validation
 
-- `pytest` in `backend/`: **22 tests passing** — 1 health + 5 model + 7 Meshy client + 5 watcher (full success incl. disk downloads, Meshy FAILED, SUCCEEDED without GLB URL, MeshyError during poll, PENDING→IN_PROGRESS advance) + 4 endpoint (immediate response, end-to-end watcher completion incl. file on disk, Meshy-create-failure recorded as PREVIEW_FAILED, empty prompt 422).
-- Zero real Meshy calls anywhere (unit: respx; integration: `FakeMeshyClient`).
-- Verified `.env`, `data/`, and `.venv/` are git-ignored; production `data/app.db` untouched by pytest.
+- `pytest` in `backend/`: **30 tests passing** — 1 health + 5 model + 7 Meshy client + 5 watcher + 9 generation-endpoint (M4 + M5 list/detail/URL-fields/404/null-URL) + 3 file-serving (bytes served, 404, path-traversal blocked).
+- Manual live smoke test with Meshy test-mode key: `POST /api/generations` → watcher → downloaded a real 720KB glTF v2 GLB + 512×512 PNG thumbnail; `GET /api/generations` and `GET /api/generations/{id}` return the row with `/files/...` URLs (no `_path` or `preview_task_id` fields leak); `GET /files/<id>/preview.glb` returns 200 with `Content-Type: model/gltf-binary` and the exact bytes.
+- Zero real Meshy calls in the automated suite (unit: `respx`; integration: `FakeMeshyClient`).
+- Verified `.env`, `data/`, and `.venv/` are git-ignored.
 
 ## Known Issues / Risks
 
