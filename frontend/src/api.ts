@@ -77,3 +77,18 @@ export function createGeneration(prompt: string): Promise<Generation> {
 export function getGeneration(id: string): Promise<Generation> {
   return jsonFetch<Generation>(`/api/generations/${encodeURIComponent(id)}`)
 }
+
+/**
+ * ``POST /api/generations/{id}/refine`` — user-initiated refine (M8).
+ *
+ * The backend returns the updated row synchronously with either
+ * ``REFINE_IN_PROGRESS`` (Meshy accepted the task) or ``REFINE_FAILED``
+ * (Meshy rejected it, e.g., quota). Either way the ``GenerationView``'s
+ * existing polling loop handles what comes next.
+ */
+export function refineGeneration(id: string): Promise<Generation> {
+  return jsonFetch<Generation>(
+    `/api/generations/${encodeURIComponent(id)}/refine`,
+    { method: 'POST' },
+  )
+}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 import GenerationView from './GenerationView'
 import ModelViewer from './ModelViewer'
 import PromptForm from './PromptForm'
@@ -69,14 +69,26 @@ export default function App() {
   const handleReset = useCallback(() => setId(null), [setId])
 
   let body: JSX.Element
-  let subtitle: string
+  let subtitle: ReactNode
   if (urlOverride) {
     body = <ModelViewer url={urlOverride} />
-    subtitle = `viewer override — ${urlOverride}`
+    subtitle = (
+      <>
+        Viewer override: <span className="uuid">{urlOverride}</span>
+      </>
+    )
   } else if (id) {
     body = <GenerationView id={id} onReset={handleReset} />
-    // Show a short id so the user can correlate with backend logs.
-    subtitle = `generation ${id.slice(0, 8)}…`
+    // Show the full uuid (not a slice) so the user can copy it verbatim to
+    // query the DB or share the URL. Rendered in a monospace span so long
+    // hex is readable, and prefixed with an explicit "Generation ID:" label
+    // so the string right after it is unambiguously an id (not a name or
+    // some other bare token that happens to look uuid-ish).
+    subtitle = (
+      <>
+        Generation ID: <span className="uuid">{id}</span>
+      </>
+    )
   } else {
     body = <PromptForm onCreated={handleCreated} />
     subtitle = 'enter a prompt to generate a 3D preview'

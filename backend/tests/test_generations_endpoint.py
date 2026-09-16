@@ -297,3 +297,145 @@ async def test_generation_read_urls_are_null_when_paths_are_null(
     assert body["preview_model_url"] is None
     assert body["thumbnail_url"] is None
     assert body["refine_model_url"] is None
+
+
+# ---------------------------------------------------------------------------
+# M8 — Refine endpoint.
+# ---------------------------------------------------------------------------
+
+
+def _seed_succeeded_preview(TestingSession, prompt: str = "a cube") -> str:
+    """Insert a row that's ready for refine — mirrors the state left by
+    a completed preview watcher (M4)."""
+    with TestingSession() as s:
+        gen = Generation(
+            prompt=prompt,
+            status=GenerationStatus.PREVIEW_SUCCEEDED,
+            preview_task_id="meshy-preview-xyz",
+            preview_progress=100,
+            preview_model_path="seed/preview.glb",
+            thumbnail_path="seed/thumbnail.png",
+            meshy_params={"mode": "preview", "ai_model": "meshy-6-lite"},
+        )
+        s.add(gen)
+        s.commit()
+        return gen.id
+
+
+async def test_refine_from_succeeded_preview_starts_refine_and_downloads(
+    app_with_fakes,
+) -> None:
+    """POST /refine transitions to REFINE_IN_PROGRESS immediately, then the
+    watcher runs to REFINE_SUCCEEDED and drops the refined GLB on disk."""
+    app_, fake, TestingSession = app_with_fakes
+    gen_id = _seed_succeeded_preview(TestingSession)
+    fake.create_task_id = "meshy-refine-xyz"
+    fake.task_snapshots = [
+        MeshyTask(
+            id="meshy-refine-xyz",
+            status="SUCCEEDED",
+            progress=100,
+            model_urls={"glb": "https://cdn/refine.glb"},
+            thumbnail_url="https://cdn/refine-thumb.png",
+        ),
+    ]
+
+    async for c in _client(app_):
+        r = await c.post(f"/api/generations/{gen_id}/refine")
+
+    assert r.status_code == 200
+    body = r.json()
+    # The endpoint returns the row post-Meshy-accepts (IN_PROGRESS, not PENDING).
+    assert body["status"] == GenerationStatus.REFINE_IN_PROGRESS.value
+    # Internal refine task id must NOT leak on the wire.
+    assert "refine_task_id" not in body
+    # Refine was requested against the correct preview task id.
+    assert fake.create_refine_calls == ["meshy-preview-xyz"]
+
+    await _await_background_tasks(app_)
+
+    with TestingSession() as s:
+        gen = s.get(Generation, gen_id)
+        assert gen is not None
+        assert gen.status is GenerationStatus.REFINE_SUCCEEDED
+        assert gen.refine_progress == 100
+        assert gen.refine_model_path == f"{gen_id}/refine.glb"
+        # Thumbnail was overwritten with the refined version.
+        assert gen.thumbnail_path == f"{gen_id}/thumbnail.png"
+        # Preview path preserved so both remain individually viewable.
+        assert gen.preview_model_path == "seed/preview.glb"
+        # meshy_params retains the preview info AND adds the refine block.
+        assert gen.meshy_params["ai_model"] == "meshy-6-lite"
+        assert gen.meshy_params["refine"]["mode"] == "refine"
+
+    # File on disk.
+    on_disk = app_.state.models_dir / f"{gen_id}/refine.glb"
+    assert on_disk.read_bytes() == fake.download_content
+
+
+async def test_refine_not_allowed_when_status_is_not_preview_succeeded(
+    app_with_fakes,
+) -> None:
+    """Refine is only allowed from PREVIEW_SUCCEEDED — anything else is 409."""
+    app_, fake, TestingSession = app_with_fakes
+    with TestingSession() as s:
+        gen = Generation(
+            prompt="in-flight preview",
+            status=GenerationStatus.PREVIEW_IN_PROGRESS,
+            preview_task_id="x",
+            preview_progress=40,
+        )
+        s.add(gen)
+        s.commit()
+        gen_id = gen.id
+
+    async for c in _client(app_):
+        r = await c.post(f"/api/generations/{gen_id}/refine")
+
+    assert r.status_code == 409
+    # Detail includes the actual status so the UI can render a helpful message.
+    assert "PREVIEW_IN_PROGRESS" in r.json()["detail"]
+    # Nothing hit Meshy and no watcher was spawned.
+    assert fake.create_refine_calls == []
+    assert not app_.state.background_tasks
+
+
+async def test_refine_returns_404_when_generation_missing(app_with_fakes) -> None:
+    app_, fake, _ = app_with_fakes
+    async for c in _client(app_):
+        r = await c.post("/api/generations/does-not-exist/refine")
+    assert r.status_code == 404
+    assert fake.create_refine_calls == []
+
+
+async def test_refine_persists_failure_when_meshy_rejects_creation(
+    app_with_fakes,
+) -> None:
+    """Meshy 400 on refine create -> row saved as REFINE_FAILED, HTTP 200 still returned.
+
+    The failure comes back in the response body (matching preview behavior)
+    so the frontend surfaces it through the same polling channel.
+    """
+    app_, fake, TestingSession = app_with_fakes
+    gen_id = _seed_succeeded_preview(TestingSession)
+    fake.create_raises = MeshyError(400, {"message": "refine quota exceeded"})
+
+    async for c in _client(app_):
+        r = await c.post(f"/api/generations/{gen_id}/refine")
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == GenerationStatus.REFINE_FAILED.value
+    assert "refine quota exceeded" in body["error"]
+    # No watcher spawned — nothing to poll.
+    assert not app_.state.background_tasks
+    # Preview URLs still present on the response (refine failure preserves them).
+    assert body["preview_model_url"] == "/files/seed/preview.glb"
+
+    # DB reflects it too.
+    with TestingSession() as s:
+        gen = s.get(Generation, gen_id)
+        assert gen is not None
+        assert gen.status is GenerationStatus.REFINE_FAILED
+        assert gen.preview_model_path == "seed/preview.glb"  # preview preserved
+        assert gen.refine_model_path is None

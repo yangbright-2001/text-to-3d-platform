@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react'
-import { Generation, GenerationStatus, getGeneration, isTerminal } from './api'
+import {
+  Generation,
+  GenerationStatus,
+  getGeneration,
+  isTerminal,
+  refineGeneration,
+} from './api'
 import ModelViewer from './ModelViewer'
 
 /**
@@ -22,16 +28,35 @@ interface Props {
  * Polls a single generation until it terminates, then either shows the
  * viewer (on success) or a failure panel (on error).
  *
- * The polling loop lives inside a ``useEffect`` keyed on ``id`` so switching
- * generations (or unmounting) reliably tears down the pending timer.
+ * Polling lifecycle: the effect is keyed on ``[id, isPolling]``, where
+ * ``isPolling`` is derived from the current row's status. This gives us a
+ * clean restart when the user takes an action that reopens a "terminal"
+ * state — most importantly clicking "Refine with textures", which moves
+ * the row from ``PREVIEW_SUCCEEDED`` (backend-terminal, no more updates
+ * without user input) back to ``REFINE_IN_PROGRESS`` (non-terminal, keep
+ * polling). Keying only on ``id`` would leave a stopped poll loop stopped
+ * forever after refine, causing the progress bar to sit at 0% until reload.
  */
 export default function GenerationView({ id, onReset }: Props) {
   const [gen, setGen] = useState<Generation | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Guards the refine button so a slow POST can't be double-fired.
+  const [refining, setRefining] = useState(false)
+
+  // Derived: are we currently in a state whose row can still change without
+  // fresh user input? Non-terminal statuses (and the initial "we haven't
+  // loaded anything yet" state) get polled; terminal statuses stop.
+  const isPolling = !gen || !isTerminal(gen.status)
 
   useEffect(() => {
+    // Skip polling entirely when the row is at rest. When the user later
+    // triggers refine, ``gen.status`` flips to REFINE_IN_PROGRESS →
+    // ``isPolling`` becomes true → this effect re-runs and starts polling.
+    if (!isPolling) return
+
     // ``cancelled`` guards against a late tick calling ``setState`` after the
-    // effect has been torn down — either due to unmount or an ``id`` change.
+    // effect has been torn down — either due to unmount, an ``id`` change,
+    // or a status crossing into terminal.
     let cancelled = false
     let timeoutId: number | undefined
 
@@ -43,8 +68,10 @@ export default function GenerationView({ id, onReset }: Props) {
         // A successful poll clears any transient error banner from an
         // earlier failed attempt.
         setError(null)
-        // Only schedule another tick if the row can still change. Once the
-        // status is terminal, this component stops touching the network.
+        // Belt-and-suspenders: also stop scheduling within tick as soon as
+        // we see a terminal status, so we don't fire one extra request in
+        // the ~ms between setGen and React re-rendering with the new
+        // isPolling value.
         if (!isTerminal(next.status)) {
           timeoutId = window.setTimeout(tick, POLL_INTERVAL_MS)
         }
@@ -64,7 +91,24 @@ export default function GenerationView({ id, onReset }: Props) {
       cancelled = true
       if (timeoutId !== undefined) window.clearTimeout(timeoutId)
     }
-  }, [id])
+  }, [id, isPolling])
+
+  async function handleRefine() {
+    if (!gen || refining) return
+    setRefining(true)
+    setError(null)
+    try {
+      const next = await refineGeneration(gen.id)
+      // Optimistically install the returned row (already REFINE_IN_PROGRESS
+      // or REFINE_FAILED). The polling effect above stays keyed on ``id``,
+      // so it will keep running and eventually see REFINE_SUCCEEDED.
+      setGen(next)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to start refine')
+    } finally {
+      setRefining(false)
+    }
+  }
 
   // First render, before the initial poll resolves.
   if (!gen) {
@@ -75,33 +119,75 @@ export default function GenerationView({ id, onReset }: Props) {
         ) : (
           <div className="progress-label">Loading…</div>
         )}
-        <button className="link-button" onClick={onReset}>← New prompt</button>
+        <button className="link-button" onClick={onReset}>← Start a new prompt</button>
       </div>
     )
   }
 
-  // M7 scope: only the preview stage is user-triggerable, so we only render
-  // preview outcomes here. M8 will branch on REFINE_* states as well.
-  const previewSucceeded = gen.status === 'PREVIEW_SUCCEEDED'
+  // Decide what to show:
+  //   * PREVIEW_FAILED → dedicated failure panel, no viewer (no model exists).
+  //   * Anything after PREVIEW_SUCCEEDED → viewer, choosing refine URL if
+  //     ready, else preview. Refine-in-progress overlays a progress bar on
+  //     top of the still-viewable preview.
+  //   * Anything before PREVIEW_SUCCEEDED → progress panel (no viewer yet).
   const previewFailed = gen.status === 'PREVIEW_FAILED'
+  const previewReady = gen.preview_model_url !== null
+  const refineReady = gen.refine_model_url !== null
+  const refineInFlight =
+    gen.status === 'REFINE_PENDING' || gen.status === 'REFINE_IN_PROGRESS'
+  const refineFailed = gen.status === 'REFINE_FAILED'
+  // Prefer refined model when available; otherwise fall back to preview.
+  const viewerUrl = refineReady ? gen.refine_model_url : gen.preview_model_url
 
   return (
     <div className="generation-view">
+      {/* Row 1: navigation + status/action controls. Prompt echo used to
+          live in this row too, but visually neighbouring "← New prompt"
+          made users think the shown prompt WAS a new one they had
+          entered. Moved to its own row below (see .prompt-echo-row). */}
       <div className="status-bar">
-        <button className="link-button" onClick={onReset}>← New prompt</button>
-        <span className="prompt-echo">"{gen.prompt}"</span>
-        <StatusBadge status={gen.status} />
+        <button className="link-button" onClick={onReset}>← Start a new prompt</button>
+        <div className="status-bar-actions">
+          <StatusBadge status={gen.status} />
+          {/* Refine button is only meaningful once preview is done and no
+              refine has started yet. Once refine is in flight, terminal,
+              or failed, there is no way to trigger another refine —
+              matches the state machine (REFINE_* states are terminal per
+              PLAN.md). */}
+          {gen.status === 'PREVIEW_SUCCEEDED' && (
+            <button onClick={handleRefine} disabled={refining}>
+              {refining ? 'Starting refine…' : 'Refine with textures'}
+            </button>
+          )}
+        </div>
+      </div>
+      {/* Row 2: the prompt this generation is fulfilling. Centered so
+          it reads as a caption for the whole page rather than an item
+          in the top toolbar. */}
+      <div className="prompt-echo-row">
+        <span className="prompt-echo-label">Prompt</span>
+        <span className="prompt-echo-text">"{gen.prompt}"</span>
       </div>
 
-      {previewSucceeded && gen.preview_model_url ? (
-        <div className="viewer">
-          <ModelViewer url={gen.preview_model_url} />
-        </div>
-      ) : previewFailed ? (
+      {previewFailed ? (
         <div className="failure-panel">
           <h3>Generation failed</h3>
           <p>{gen.error ?? 'Unknown error'}</p>
           <button onClick={onReset}>Try another prompt</button>
+        </div>
+      ) : previewReady && viewerUrl ? (
+        <div className="viewer">
+          <ModelViewer url={viewerUrl} />
+          {/* Overlay refine progress on top of the preview viewer so users
+              can watch the process without losing sight of what they had. */}
+          {refineInFlight && <RefineOverlay progress={gen.refine_progress} />}
+          {/* Refine failure is soft — preview stays viewable. Show a banner
+              on top so the failure is not hidden. */}
+          {refineFailed && (
+            <div className="refine-error">
+              Refine failed: {gen.error ?? 'Unknown error'}
+            </div>
+          )}
         </div>
       ) : (
         <ProgressPanel gen={gen} error={error} />
@@ -150,8 +236,7 @@ function ProgressPanel({
   gen: Generation
   error: string | null
 }) {
-  // Use the refine progress once we've moved past preview — makes the bar
-  // meaningful even for M8 flows that reuse this component.
+  // Use the refine progress once we've moved past preview.
   const isRefine = gen.status.startsWith('REFINE_')
   const progress = isRefine ? gen.refine_progress : gen.preview_progress
   return (
@@ -165,6 +250,22 @@ function ProgressPanel({
       {error && (
         <div className="muted">Reconnecting… ({error})</div>
       )}
+    </div>
+  )
+}
+
+/**
+ * Floating progress bar shown while a refine runs on top of the already-
+ * viewable preview. Kept simple: a top-anchored ribbon rather than a modal
+ * so the user can still orbit the preview meanwhile.
+ */
+function RefineOverlay({ progress }: { progress: number }) {
+  return (
+    <div className="refine-overlay">
+      <div className="progress-label">Refining textures — {progress}%</div>
+      <div className="progress-bar" role="progressbar" aria-valuenow={progress}>
+        <div className="progress-bar-fill" style={{ width: `${progress}%` }} />
+      </div>
     </div>
   )
 }
