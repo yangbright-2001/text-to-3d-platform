@@ -37,7 +37,7 @@ For each feature:
    - the commands needed to run the project
    - a short checklist of what to verify
    Do not require manual browser testing for backend-only or configuration-only changes.
-10. Suggest a focused commit message with good readability so that others can see the actual development progression and understand how the project evolved, how problems were addressed and how the system was developed.
+10. Suggest a focused commit message. The commit message should be with good readability so that others can see the actual development progression, understand how the project evolved and how the system was developed.
 11. Do not commit automatically.
 
 ## Project constraints

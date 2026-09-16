@@ -1,0 +1,47 @@
+/* Minimal reset + full-viewport layout for the 3D viewer. */
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: #111;
+  color: #eee;
+  font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.app-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid #222;
+  font-size: 14px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.app-header .muted {
+  color: #888;
+  font-size: 12px;
+}
+
+.viewer {
+  flex: 1;
+  position: relative;
+}
+
+.viewer-status {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 4px;
+  font-size: 12px;
+  pointer-events: none;
+}

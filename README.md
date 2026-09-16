@@ -12,13 +12,13 @@ See [`PLAN.md`](PLAN.md) for the architecture and milestone roadmap, and
 ## Tech stack
 
 - Backend: Python + FastAPI, SQLite, local file storage (no cloud services)
-- Frontend: React + Vite + TypeScript + React Three Fiber (added in M6)
+- Frontend: React + Vite + TypeScript + React Three Fiber
 
 ## Project layout
 
 ```
 backend/     FastAPI app, tests, dependencies
-frontend/    React app (scaffolded in M6)
+frontend/    React app (Vite + R3F viewer)
 data/        SQLite DB + downloaded models (gitignored, created at runtime)
 PLAN.md      Architecture summary + milestones
 PROGRESS.md  Living status log
@@ -61,6 +61,21 @@ cd backend
 source .venv/bin/activate
 pytest
 ```
+
+## Frontend setup
+
+Requires Node 20+ (developed on Node 24). See [`frontend/README.md`](frontend/README.md) for details.
+
+```bash
+cd frontend
+npm install
+npm run dev
+# open http://localhost:5173
+```
+
+The dev server proxies `/api` and `/files` to the backend on port 8000, so run
+both in separate terminals for the full experience. The default view renders
+a bundled sample GLB and needs no backend.
 
 ## Notes
 
