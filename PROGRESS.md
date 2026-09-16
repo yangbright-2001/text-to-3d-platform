@@ -2,21 +2,22 @@
 
 ## Current Status
 
-M1 (project scaffold) complete. Backend boots and its health endpoint is tested and passing. No Meshy integration or persistence yet. Architecture and roadmap live in `PLAN.md`.
+M1 + M2 complete. Backend boots, creates `data/app.db` and `data/models/` on startup, exposes `/api/health`, and has a persisted `Generation` model with the app-level status state machine. Automated tests use an isolated in-memory SQLite; the production DB is never touched by pytest.
 
 ## Completed Features
 
 - **M1 — Project scaffold**: repo layout (`backend/`, `frontend/` placeholder); FastAPI app with `GET /api/health`; config via pydantic-settings reading `backend/.env`; pinned `requirements.txt`; `.env.example`; root `.gitignore` and `README.md` with setup/run instructions.
+- **M2 — Persistence layer**: SQLAlchemy 2.0 + SQLite via `backend/app/db.py` (engine, `SessionLocal`, `get_session()` dependency, idempotent `init_db()`); `Generation` model in `backend/app/models.py` with `GenerationStatus` enum and `can_transition()` state-machine helper; FastAPI `lifespan` runs `init_db()` on startup; test fixtures in `backend/tests/conftest.py` use in-memory SQLite + `StaticPool` for isolation.
 - Non-code: architecture plan in `PLAN.md`; project workflow rules in `.cursor/rules/project.mdc`.
 
 ## Current Feature
 
-- None in progress. M1 done and validated; awaiting go-ahead for **M2 — Persistence layer**.
+- None in progress. M2 done and validated; awaiting go-ahead for **M3 — Meshy client**.
 
 ## Next Steps
 
-1. M2: SQLite wiring + SQLAlchemy `Generation` model with the app-level status state machine, plus tests.
-2. Then proceed milestone by milestone (M3–M10) per `PLAN.md`, one feature at a time with tests and a commit per milestone.
+1. M3: `MeshyClient` wrapping preview/refine/get-task/file-download with httpx; HTTP-level tests using `respx` (no real credits).
+2. Then proceed milestone by milestone (M4–M10) per `PLAN.md`, one feature at a time with tests and a commit per milestone.
 3. Obtain Meshy API key from the owner when reaching manual end-to-end testing (backend `.env` only; never committed).
 
 ## Key Engineering Decisions
@@ -33,7 +34,8 @@ M1 (project scaffold) complete. Backend boots and its health endpoint is tested 
 
 ## Validation
 
-- `pytest` in `backend/`: 1 test passing (`test_health_ok`). Dependencies install cleanly into `backend/.venv` from pinned `requirements.txt` (Python 3.13).
+- `pytest` in `backend/`: **6 tests passing** — health endpoint + `Generation` defaults / `updated_at` on-update / JSON round-trip / allowed transitions / rejected transitions.
+- Manual sanity check: FastAPI lifespan creates `data/app.db` and `data/models/` on startup; automated tests never trigger lifespan and never write to production `data/`.
 - Verified `.env`, `data/`, and `.venv/` are git-ignored.
 - Broader testing strategy defined in `PLAN.md`: fake Meshy client for lifecycle tests; `respx` for HTTP-level client tests.
 

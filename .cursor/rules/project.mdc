@@ -9,7 +9,7 @@ alwaysApply: true
 - After completing the current feature, stop and wait before starting the next one.
 - Keep the implementation simple and avoid unnecessary infrastructure or abstractions.
 - Ask for clarification when requirements are unclear, missing, ambiguous, or conflicting. Do not silently invent behavior or make major assumptions.
-- Ask before using API keys if it is needed. 
+- The Meshy Text to 3D API document is in https://docs.meshy.ai/en/api/text-to-3d. Ask before using API keys if it is needed. 
 - Never use a real external API key, make a paid API call, or consume external service credits without explicit user approval. 
 - Prefer local, free, or low-cost storage and deployment solutions. Clearly mention any extra deployment, hosting, storage, database, worker or maintenance cost before implementation.
 
@@ -19,7 +19,7 @@ alwaysApply: true
 
 For each feature:
 
-1. Inspect the relevant existing code.
+1. Inspect the relevant existing code. Before starting a feature, read the relevant parts of `PLAN.md` and `PROGRESS.md` to understand the agreed architecture, current project state, and feature scope. 
 2. Make a concise implementation plan.
 3. Implement only the current feature. Add comments for important methods, key logic, and non-obvious code lines. Explain intent and reasoning, not obvious syntax. Keep comments close to the related code and avoid over-commenting simple code.
 4. Add or update relevant tests for meaningful behavior and business logic together with the feature. Tests may include unit, integration, or system tests, and should show how the system is validated. For setup/configuration-only changes, use lightweight validation such as build, startup, or health checks instead of unnecessary tests. Avoid tests that only verify framework boilerplate.
@@ -37,8 +37,8 @@ For each feature:
    - the commands needed to run the project
    - a short checklist of what to verify
    Do not require manual browser testing for backend-only or configuration-only changes.
-9. Suggest a focused commit message. The project needs to commit from time to time to see the actual development progression and understand how the project evolved, how problems were addressed and how the system was developed.
-10. Do not commit automatically.
+10. Suggest a focused commit message. The project needs to commit from time to time to see the actual development progression and understand how the project evolved, how problems were addressed and how the system was developed.
+11. Do not commit automatically.
 
 ## Project constraints
 

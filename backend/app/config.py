@@ -46,6 +46,15 @@ class Settings(BaseSettings):
         """Folder where downloaded GLB models and thumbnails are stored."""
         return self.data_dir / "models"
 
+    @property
+    def database_url(self) -> str:
+        """SQLAlchemy URL for the on-disk SQLite database.
+
+        Tests do not use this URL; they create their own in-memory engine via
+        the ``engine`` fixture in ``tests/conftest.py``.
+        """
+        return f"sqlite:///{self.data_dir / 'app.db'}"
+
 
 @lru_cache
 def get_settings() -> Settings:

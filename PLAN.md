@@ -69,7 +69,7 @@ Stable, project-wide decisions. These should not change during implementation; a
 One feature at a time; each milestone ends in a working, tested state and its own commit.
 
 - [x] **M1 — Project scaffold**: repo layout (`backend/`, `frontend/` placeholder), FastAPI skeleton with health endpoint, config loading from `.env`, README with setup instructions.
-- [ ] **M2 — Persistence layer**: SQLite wiring, `Generation` model with the status state machine, first tests.
+- [x] **M2 — Persistence layer**: SQLite wiring, `Generation` model with the status state machine, first tests.
 - [ ] **M3 — Meshy client**: client module wrapping preview/refine/get-task/file-download, with mocked HTTP tests.
 - [ ] **M4 — Preview generation flow**: `POST /api/generations`, background watcher, GLB + thumbnail download on success, full lifecycle tests against a fake Meshy client.
 - [ ] **M5 — Read endpoints and file serving**: list and detail endpoints, static serving of downloaded models.

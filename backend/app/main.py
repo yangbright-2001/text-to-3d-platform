@@ -1,16 +1,29 @@
 """FastAPI application entrypoint.
 
-M1 provides only the app skeleton and a health endpoint. Routers, persistence,
-Meshy integration and background task tracking are added in later milestones.
+M1 shipped the app skeleton and health endpoint; M2 adds SQLite persistence
+initialization via the lifespan. Routers, Meshy integration and background
+task tracking are added in later milestones.
 """
+
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
 from .config import get_settings
+from .db import init_db
 
 settings = get_settings()
 
-app = FastAPI(title=settings.app_name)
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    """Create the data directory and DB tables on startup (idempotent)."""
+    init_db()
+    yield
+
+
+app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
 
 @app.get("/api/health")
