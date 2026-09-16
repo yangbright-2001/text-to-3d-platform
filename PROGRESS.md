@@ -2,22 +2,23 @@
 
 ## Current Status
 
-M1 + M2 complete. Backend boots, creates `data/app.db` and `data/models/` on startup, exposes `/api/health`, and has a persisted `Generation` model with the app-level status state machine. Automated tests use an isolated in-memory SQLite; the production DB is never touched by pytest.
+M1 + M2 + M3 complete. Backend boots with SQLite persistence and a fully-tested Meshy HTTP client (`MeshyClient`, async, `httpx.AsyncClient`-based). Automated tests mock Meshy via `respx` and use isolated in-memory SQLite; no real Meshy credits consumed and the production DB stays untouched.
 
 ## Completed Features
 
 - **M1 — Project scaffold**: repo layout (`backend/`, `frontend/` placeholder); FastAPI app with `GET /api/health`; config via pydantic-settings reading `backend/.env`; pinned `requirements.txt`; `.env.example`; root `.gitignore` and `README.md` with setup/run instructions.
-- **M2 — Persistence layer**: SQLAlchemy 2.0 + SQLite via `backend/app/db.py` (engine, `SessionLocal`, `get_session()` dependency, idempotent `init_db()`); `Generation` model in `backend/app/models.py` with `GenerationStatus` enum and `can_transition()` state-machine helper; FastAPI `lifespan` runs `init_db()` on startup; test fixtures in `backend/tests/conftest.py` use in-memory SQLite + `StaticPool` for isolation.
+- **M2 — Persistence layer**: SQLAlchemy 2.0 + SQLite via `backend/app/db.py`; `Generation` model + `GenerationStatus` enum + `can_transition()` helper in `backend/app/models.py`; FastAPI `lifespan` runs `init_db()` on startup; test fixtures use in-memory SQLite + `StaticPool` for isolation.
+- **M3 — Meshy client**: `backend/app/meshy.py` exposes `MeshyClient` (async), `MeshyTask` dataclass, `MeshyError`, plus module-level policy constants (`DEFAULT_PREVIEW_AI_MODEL="meshy-6-lite"`, GLB-only, PBR off, 2k textures). Covers create preview/refine, get task (in-progress/succeeded/failed), streamed file download (auth header omitted for presigned URLs), and error handling. `get_meshy_client()` factory ready for M4 DI wiring.
 - Non-code: architecture plan in `PLAN.md`; project workflow rules in `.cursor/rules/project.mdc`.
 
 ## Current Feature
 
-- None in progress. M2 done and validated; awaiting go-ahead for **M3 — Meshy client**.
+- None in progress. M3 done and validated; awaiting go-ahead for **M4 — Preview generation flow**.
 
 ## Next Steps
 
-1. M3: `MeshyClient` wrapping preview/refine/get-task/file-download with httpx; HTTP-level tests using `respx` (no real credits).
-2. Then proceed milestone by milestone (M4–M10) per `PLAN.md`, one feature at a time with tests and a commit per milestone.
+1. M4: `POST /api/generations`, background asyncio watcher, GLB + thumbnail download on success, full lifecycle tests against an injected fake `MeshyClient`.
+2. Then proceed milestone by milestone (M5–M10) per `PLAN.md`, one feature at a time with tests and a commit per milestone.
 3. Obtain Meshy API key from the owner when reaching manual end-to-end testing (backend `.env` only; never committed).
 
 ## Key Engineering Decisions
@@ -34,10 +35,10 @@ M1 + M2 complete. Backend boots, creates `data/app.db` and `data/models/` on sta
 
 ## Validation
 
-- `pytest` in `backend/`: **6 tests passing** — health endpoint + `Generation` defaults / `updated_at` on-update / JSON round-trip / allowed transitions / rejected transitions.
+- `pytest` in `backend/`: **13 tests passing** — 1 health + 5 model + 7 Meshy client (payloads, task parsing across statuses, 4xx → `MeshyError`, streamed download bytes + no auth header on presigned URLs).
 - Manual sanity check: FastAPI lifespan creates `data/app.db` and `data/models/` on startup; automated tests never trigger lifespan and never write to production `data/`.
 - Verified `.env`, `data/`, and `.venv/` are git-ignored.
-- Broader testing strategy defined in `PLAN.md`: fake Meshy client for lifecycle tests; `respx` for HTTP-level client tests.
+- Zero real Meshy calls in the test suite (all mocked via `respx`).
 
 ## Known Issues / Risks
 

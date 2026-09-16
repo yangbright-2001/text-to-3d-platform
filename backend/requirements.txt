@@ -7,4 +7,6 @@ sqlalchemy==2.0.36
 
 # Testing
 pytest==8.3.4
+pytest-asyncio==0.24.0
 httpx==0.28.1
+respx==0.22.0
