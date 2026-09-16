@@ -1,4 +1,4 @@
-import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
+import { ReactNode, useCallback, useEffect, useState } from 'react'
 import GenerationView from './GenerationView'
 import ModelViewer from './ModelViewer'
 import PromptForm from './PromptForm'
@@ -63,16 +63,12 @@ function useQueryParam(
 export default function App() {
   const [id, setId] = useQueryParam('id')
   const [view, setView] = useQueryParam('view')
-
-  // ``url`` is only read on mount: it's a debug override, not something the
-  // app itself ever mutates. Kept in a ``useMemo`` for symmetry with ``id``.
-  const urlOverride = useMemo(
-    () => new URLSearchParams(window.location.search).get('url'),
-    [],
-  )
+  // Same hook as id/view so "Text to 3D" → home can clear a ``?url=`` debug
+  // override via one pushState + popstate, without a leftover frozen memo.
+  const [urlOverride] = useQueryParam('url')
 
   const handleCreated = useCallback((newId: string) => setId(newId), [setId])
-  // Reset clears BOTH ``id`` and ``view`` so "← Start a new prompt" always
+  // Reset clears BOTH ``id`` and ``view`` so "Start a new prompt" always
   // lands on the form regardless of which page triggered it.
   const handleReset = useCallback(() => {
     setView(null)
@@ -92,12 +88,20 @@ export default function App() {
     },
     [setId, setView],
   )
+  // Title click: one history entry to bare ``/``, then let the existing
+  // popstate listeners sync id/view/url from the empty query string.
+  const handleGoHome = useCallback(() => {
+    if (!window.location.search) return
+    window.history.pushState({}, '', window.location.pathname)
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  }, [])
 
   let body: JSX.Element
   let subtitle: ReactNode
-  // A right-aligned nav link in the header, shown on every mode that isn't
-  // already the tracker (so the user always has a discoverable path to
-  // history without cluttering the tracker page itself).
+  // Right-aligned header nav is only for *going to* history (home / debug
+  // override). On the viewer, returning to history is a back-action and
+  // lives on the left inside ``GenerationView`` so it isn't mistaken for
+  // "forward".
   let headerNav: ReactNode = null
   if (urlOverride) {
     body = <ModelViewer url={urlOverride} />
@@ -107,12 +111,18 @@ export default function App() {
       </>
     )
     headerNav = (
-      <button className="link-button" onClick={handleOpenTracker}>
-        History →
+      <button className="secondary history-nav" onClick={handleOpenTracker}>
+        Generation history
       </button>
     )
   } else if (id) {
-    body = <GenerationView id={id} onReset={handleReset} />
+    body = (
+      <GenerationView
+        id={id}
+        onReset={handleReset}
+        onBackToHistory={handleOpenTracker}
+      />
+    )
     // Show the full uuid (not a slice) so the user can copy it verbatim to
     // query the DB or share the URL. Rendered in a monospace span so long
     // hex is readable, and prefixed with an explicit "Generation ID:" label
@@ -123,11 +133,6 @@ export default function App() {
         Generation ID: <span className="uuid">{id}</span>
       </>
     )
-    headerNav = (
-      <button className="link-button" onClick={handleOpenTracker}>
-        History →
-      </button>
-    )
   } else if (view === 'tracker') {
     body = (
       <TaskTracker
@@ -136,14 +141,14 @@ export default function App() {
       />
     )
     subtitle = 'generation history'
-    // No "History" link on the history page itself.
+    // No history link on the history page itself.
     headerNav = null
   } else {
     body = <PromptForm onCreated={handleCreated} />
     subtitle = 'enter a prompt to generate a 3D preview'
     headerNav = (
-      <button className="link-button" onClick={handleOpenTracker}>
-        History →
+      <button className="secondary history-nav" onClick={handleOpenTracker}>
+        Generation history
       </button>
     )
   }
@@ -151,7 +156,16 @@ export default function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <strong>Text to 3D</strong>
+        <a
+          href="/"
+          className="app-title"
+          onClick={e => {
+            e.preventDefault()
+            handleGoHome()
+          }}
+        >
+          Text to 3D
+        </a>
         <span className="muted app-header-subtitle">{subtitle}</span>
         {headerNav && <div className="app-header-nav">{headerNav}</div>}
       </header>

@@ -80,7 +80,12 @@ export default function TaskTracker({ onOpen, onNewPrompt }: Props) {
           {anyInFlight && (
             <span className="muted">Live — {countInFlight(rows)} in progress</span>
           )}
-          <button onClick={fetchRows} disabled={refreshing}>
+          <button
+            className="secondary"
+            onClick={fetchRows}
+            disabled={refreshing}
+            title="Reload the list now. The page already auto-refreshes every 3s while a generation is in progress; use this after everything has finished, or if a refresh failed."
+          >
             {refreshing ? 'Refreshing…' : 'Refresh'}
           </button>
         </div>
@@ -128,16 +133,31 @@ interface CardProps {
 /**
  * One entry in the tracker grid.
  *
- * The whole card is a button so keyboard users can Tab/Enter to open a
- * generation. Rendering as a ``<button>`` (not a div with onClick) gives us
- * that behavior for free and makes the click affordance semantic.
+ * Rendered as a ``div role="button"`` rather than a native ``<button>``:
+ * Chromium sizes overflow:hidden flex buttons to line-height and clips
+ * the thumbnail. A div sizes to its contents; we keep button semantics
+ * with role/tabIndex/Enter-Space.
+ *
+ * Caption is always three left-aligned lines (prompt / status / time) so
+ * every card in a row has the same height.
  */
 function TaskCard({ row, onOpen }: CardProps) {
+  function activate() {
+    onOpen(row.id)
+  }
+
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       className="task-card"
-      onClick={() => onOpen(row.id)}
+      onClick={activate}
+      onKeyDown={e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          activate()
+        }
+      }}
       // The prompt is the most useful hover-tooltip: prompts are often
       // longer than the card body can show without ellipsis.
       title={row.prompt}
@@ -151,14 +171,14 @@ function TaskCard({ row, onOpen }: CardProps) {
       </div>
       <div className="task-card-body">
         <div className="task-card-prompt">{row.prompt}</div>
-        <div className="task-card-meta">
-          <span className={`status status-${row.status.toLowerCase()}`}>
-            {humanize(row.status)}
-          </span>
-          <span className="muted">{formatTimestamp(row.created_at)}</span>
-        </div>
+        <span className={`status status-${row.status.toLowerCase()}`}>
+          {statusLabel(row)}
+        </span>
+        <time className="muted task-card-time" dateTime={row.created_at}>
+          {formatTimestamp(row.created_at)}
+        </time>
       </div>
-    </button>
+    </div>
   )
 }
 
@@ -203,20 +223,38 @@ function humanize(status: GenerationStatus): string {
   }
 }
 
+/** In-flight rows append Meshy's percent so the tracker shows live progress. */
+function statusLabel(row: Generation): string {
+  const label = humanize(row.status)
+  if (isTerminal(row.status)) return label
+  const pct = row.status.startsWith('REFINE_')
+    ? row.refine_progress
+    : row.preview_progress
+  return `${label} · ${pct}%`
+}
+
 /**
- * Render an ISO timestamp compactly. Same-day generations get a wall-clock
- * time (fine-grained enough to distinguish rapid submits during dev); older
- * rows get a locale date.
+ * Format a generation timestamp in US Pacific time.
+ *
+ * The backend stores UTC but SQLite + FastAPI currently emit a naive ISO
+ * string (no ``Z`` / offset). Treat missing timezone as UTC so we don't
+ * accidentally display UTC clock hours as if they were local. Minutes are
+ * included so two same-hour submits stay distinguishable.
+ *
+ * ``America/Los_Angeles`` automatically switches PDT/PST; September is PDT.
  */
+const PACIFIC_TZ = 'America/Los_Angeles'
+
 function formatTimestamp(iso: string): string {
-  const d = new Date(iso)
+  const d = new Date(/Z$|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : `${iso}Z`)
   if (Number.isNaN(d.getTime())) return iso
-  const now = new Date()
-  const sameDay =
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate()
-  return sameDay
-    ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    : d.toLocaleDateString()
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: PACIFIC_TZ,
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZoneName: 'short',
+  }).format(d)
 }

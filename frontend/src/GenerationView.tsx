@@ -20,8 +20,10 @@ const POLL_INTERVAL_MS = 3000
 
 interface Props {
   id: string
-  /** Return to the prompt form. Wired to the "← New prompt" button. */
+  /** Return to the prompt form. Wired to the "Start a new prompt" button. */
   onReset: () => void
+  /** Return to the Task Tracker. Lives on the left — back, not forward. */
+  onBackToHistory: () => void
 }
 
 /**
@@ -37,7 +39,7 @@ interface Props {
  * polling). Keying only on ``id`` would leave a stopped poll loop stopped
  * forever after refine, causing the progress bar to sit at 0% until reload.
  */
-export default function GenerationView({ id, onReset }: Props) {
+export default function GenerationView({ id, onReset, onBackToHistory }: Props) {
   const [gen, setGen] = useState<Generation | null>(null)
   const [error, setError] = useState<string | null>(null)
   // Guards the refine button so a slow POST can't be double-fired.
@@ -119,7 +121,9 @@ export default function GenerationView({ id, onReset }: Props) {
         ) : (
           <div className="progress-label">Loading…</div>
         )}
-        <button className="link-button" onClick={onReset}>← Start a new prompt</button>
+        <button className="secondary" onClick={onBackToHistory}>
+          Generation history
+        </button>
       </div>
     )
   }
@@ -144,9 +148,16 @@ export default function GenerationView({ id, onReset }: Props) {
       {/* Row 1: navigation + status/action controls. Prompt echo used to
           live in this row too, but visually neighbouring "← New prompt"
           made users think the shown prompt WAS a new one they had
-          entered. Moved to its own row below (see .prompt-echo-row). */}
+          entered. Moved to its own row below (see .prompt-echo-row).
+          History and new-prompt are solid buttons on the left so they
+          read as actions, not as a buried header link. */}
       <div className="status-bar">
-        <button className="link-button" onClick={onReset}>← Start a new prompt</button>
+        <div className="status-bar-nav">
+          <button className="secondary" onClick={onBackToHistory}>
+            Generation history
+          </button>
+          <button onClick={onReset}>Start a new prompt</button>
+        </div>
         <div className="status-bar-actions">
           <StatusBadge status={gen.status} />
           {/* Refine button is only meaningful once preview is done and no
@@ -155,7 +166,7 @@ export default function GenerationView({ id, onReset }: Props) {
               matches the state machine (REFINE_* states are terminal per
               PLAN.md). */}
           {gen.status === 'PREVIEW_SUCCEEDED' && (
-            <button onClick={handleRefine} disabled={refining}>
+            <button className="refine" onClick={handleRefine} disabled={refining}>
               {refining ? 'Starting refine…' : 'Refine with textures'}
             </button>
           )}

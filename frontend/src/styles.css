@@ -37,9 +37,26 @@ body,
   align-items: baseline;
 }
 
-.app-header strong {
+.app-header strong,
+.app-title {
   font-size: 20px;
+  font-weight: 700;
   letter-spacing: 0.2px;
+  color: inherit;
+  text-decoration: none;
+  font-family: inherit;
+  line-height: inherit;
+  cursor: pointer;
+}
+
+.app-title:hover {
+  color: #fff;
+}
+
+.app-header-nav .history-nav {
+  font-size: 16px;
+  font-weight: 600;
+  padding: 9px 18px;
 }
 
 /* Grow the subtitle so the nav pushes to the right edge. Long uuids in the
@@ -160,6 +177,31 @@ button:disabled {
   cursor: not-allowed;
 }
 
+/* Quiet filled button for navigation (e.g. back to history). Sits next to
+ * the default blue primary so the two actions don't compete. */
+button.secondary {
+  background: #252525;
+  color: #ddd;
+  border: 1px solid #3a3a3a;
+}
+
+button.secondary:hover:not(:disabled) {
+  background: #2e2e2e;
+  border-color: #555;
+  color: #fff;
+}
+
+/* Texture refine — violet so it doesn't collide with the blue "new prompt"
+ * primary or the green status pills on the same toolbar. */
+button.refine {
+  background: #7c3aed;
+  color: #fff;
+}
+
+button.refine:hover:not(:disabled) {
+  background: #6d28d9;
+}
+
 /* Link-style button used in the status bar and reset actions. Sized down
  * relative to primary buttons so it visually reads as a nav link. */
 .link-button {
@@ -195,6 +237,13 @@ button:disabled {
   font-size: 15px;
   flex-shrink: 0;
   gap: 16px;
+}
+
+.status-bar-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
 }
 
 .status-bar-actions {
@@ -400,14 +449,18 @@ button:disabled {
   /* auto-fill keeps the grid consistent as the window shrinks; min 220px
    * per card avoids cramped thumbnails on narrow viewports. */
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  /* min-content rows: overflow:hidden cards would otherwise shrink to
+   * ~line-height so the grid can fit every row into the viewport. */
+  grid-auto-rows: min-content;
   gap: 20px;
   padding: 24px;
   overflow-y: auto;
   align-content: start;
 }
 
-/* Whole card is a semantic <button> so keyboard users get Tab/Enter for
- * free. Strip default button chrome and let our own styling take over. */
+/* Clickable card. Native <button> is avoided: Chromium sizes an
+ * overflow:hidden flex button to line-height and clips the thumbnail.
+ * Keyboard activation is handled in TaskCard (role=button + Enter/Space). */
 .task-card {
   background: #1a1a1a;
   border: 1px solid #262626;
@@ -420,6 +473,9 @@ button:disabled {
   text-align: left;
   overflow: hidden;
   font: inherit;
+  width: 100%;
+  min-height: min-content;
+  height: 100%;
   transition: border-color 0.15s ease, transform 0.15s ease;
 }
 
@@ -435,6 +491,10 @@ button:disabled {
 }
 
 .task-card-thumb {
+  /* Square image ~80% of the card. ``flex: none`` + ``width: 100%`` stop a
+   * flex-column <button> from collapsing aspect-ratio children to 0 height. */
+  width: 100%;
+  flex: none;
   aspect-ratio: 1 / 1;
   background: #0e0e0e;
   display: flex;
@@ -469,35 +529,34 @@ button:disabled {
 }
 
 .task-card-body {
-  padding: 12px 14px 14px 14px;
+  /* Three fixed lines — prompt, status, time — so every card in a row
+   * shares the same caption height. */
+  flex: 0 0 auto;
+  padding: 10px 12px 12px 12px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  /* Cap card body so long prompts don't blow out the row height. */
-  min-height: 96px;
+  align-items: flex-start;
+  gap: 6px;
 }
 
 .task-card-prompt {
-  font-size: 15px;
+  font-size: 13px;
   color: #ddd;
-  line-height: 1.35;
-  /* Clamp to two lines. ``-webkit-line-clamp`` is widely supported in
-   * evergreen browsers. */
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  line-height: 1.3;
+  white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
-.task-card-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-top: auto;
+.task-card-body .status {
+  font-size: 11px;
+  padding: 2px 8px;
 }
 
-.task-card-meta .status {
-  font-size: 12px;
-  padding: 3px 10px;
+.task-card-time {
+  font-size: 11px;
+  line-height: 1.2;
+  text-align: left;
+  white-space: nowrap;
 }
