@@ -14,8 +14,6 @@ from typing import Optional
 
 import httpx
 
-from .config import get_settings
-
 # ---------------------------------------------------------------------------
 # Meshy-specific policy defaults.
 #
@@ -215,11 +213,5 @@ class MeshyClient:
                     f.write(chunk)
 
 
-def get_meshy_client() -> MeshyClient:
-    """Factory used later by FastAPI dependency injection (M4).
-
-    Kept here so tests and callers have a single place to construct a client
-    from application settings.
-    """
-    settings = get_settings()
-    return MeshyClient(api_key=settings.meshy_api_key, api_base=settings.meshy_api_base)
+# The FastAPI DI helper ``get_meshy_client`` lives in ``deps.py`` so this
+# module has no FastAPI import dependency.
