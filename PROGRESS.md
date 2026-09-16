@@ -28,7 +28,7 @@ M1–M10 complete. The full user story works end-to-end (prompt → preview → 
   - Frontend: `ModelViewer` wraps the canvas in an error boundary ("Could not load this 3D model") and a Suspense fallback ("Loading model…"). Failed tracker cards show an ellipsized `error` line; the tooltip still has the full prompt + reason. Grid stretch keeps row heights even when a failed card is taller.
   - README: how to run (two terminals, test-mode key, smoke steps, pytest). `frontend/README.md` covers only the Vite app (proxy, `?url=`, build, sample GLB attribution).
 - Non-code: architecture plan in `PLAN.md`; workflow rules in `.cursor/rules/project.mdc`.
-- **Post-M10 polish**: header platform name ("Text to 3D") bumped to 28px / weight 800 / white so it reads as the product lockup rather than another header control. Home prompt card is larger (760px, taller textarea), centered in the main pane, then nudged slightly up so it does not sit below visual center. Opening Generation history from a ``?url=`` debug override now replaces the whole query (``?url=`` outranks ``?view=tracker``, so leaving url set looked like a no-op).
+- **Post-M10 polish**: header platform name ("Text to 3D") bumped to 28px / weight 800 / white so it reads as the product lockup rather than another header control. Home prompt card is larger (760px, taller textarea), centered in the main pane, then nudged slightly up so it does not sit below visual center. Opening Generation history from a ``?url=`` debug override now replaces the whole query (``?url=`` outranks ``?view=tracker``, so leaving url set looked like a no-op). README documents fresh-clone empty history vs ``AI_WORKFLOW.md`` screenshots and adds Windows setup commands.
 
 ## Current Feature
 
