@@ -6,14 +6,14 @@ prompt, wait for a **preview** mesh, then optionally **refine** it with
 textures. Generations are tracked asynchronously, so you can close the
 browser and reopen them later from **Generation history**.
 
-More information about how the project was designed and built (including the AI-assisted
-workflow) is in `[AI_WORKFLOW.md](AI_WORKFLOW.md)`. Project architecture and
-milestone status are in `[PLAN.md](PLAN.md)` and `[PROGRESS.md](PROGRESS.md)`.
+**More information about how the project was designed, built, as well as the AI-assisted workflow is in [AI_WORKFLOW.md](AI_WORKFLOW.md). Project architecture and milestone status are in [PLAN.md](PLAN.md) and [PROGRESS.md](PROGRESS.md).**
 
 ## Tech stack
 
 - Backend: Python 3.11+ / FastAPI, SQLite, local file storage
 - Frontend: React + Vite + TypeScript + React Three Fiber
+
+
 
 ## Project layout
 
@@ -26,6 +26,8 @@ PLAN.md         Architecture summary + milestones
 PROGRESS.md     Living status log
 ```
 
+
+
 ## How to run
 
 You need **Python 3.11+** (developed on 3.13) and **Node 20+** (developed
@@ -33,7 +35,7 @@ on Node 24). Backend setup is in steps **§1a–1d** (venv → dependencies → 
 uvicorn); frontend is steps **§2**.
 
 **For Fresh clone:** `data/` is not in git (`data/app.db` + `data/models/`).  
-**Generation history** page starts **empty** — it will not match the sample **Generation history** page screenshots in `[AI_WORKFLOW.md](AI_WORKFLOW.md)` or `doc-image/`. 
+**Generation history** page starts **empty** — it will not match the sample **Generation history** page screenshots in [AI_WORKFLOW.md](AI_WORKFLOW.md) or `doc-image/`. 
 Submit a few prompts locally (or run refine) and 3D-asset cards in **Generation history** 
 page will appear. To reproduce someone else's filled history, you would 
 need their `data/` folder copied onto your machine (not part of the repo).
@@ -82,9 +84,11 @@ With the venv still active:
 pip install -r requirements.txt
 ```
 
+
+
 #### 1c. Set the Meshy API key
 
-Edit **`backend/.env`**. On the line `MESHY_API_KEY=`, paste a key (leave
+Edit `backend/.env`. On the line `MESHY_API_KEY=`, paste a key (leave
 `MESHY_API_BASE` unchanged).
 
 For a full local demo of this platform **without your own Meshy API key**, use the public
@@ -105,7 +109,7 @@ With the venv still active:
 uvicorn app.main:app --reload
 ```
 
-Optional sanity check: open http://127.0.0.1:8000/api/health — you should
+Optional sanity check: open [http://127.0.0.1:8000/api/health](http://127.0.0.1:8000/api/health) — you should
 see `"meshy_key_configured":"true"`. Or run `curl` on macOS/Linux.
 
 #### 1e. (Optional) tests (mock Meshy; never uses `data/app.db`):
@@ -113,6 +117,8 @@ see `"meshy_key_configured":"true"`. Or run `curl` on macOS/Linux.
 ```bash
 pytest
 ```
+
+
 
 ### 2. Frontend
 
@@ -132,7 +138,7 @@ backend on port 8000, so keep uvicorn running for generation, history,
 and the 3D viewer.
 
 More frontend notes (build, debug `?url=`, sample GLB attribution) are in
-`[frontend/README.md](frontend/README.md)`.
+[frontend/README.md](frontend/README.md).
 
 ### 3. Try the app
 
@@ -143,8 +149,7 @@ More frontend notes (build, debug `?url=`, sample GLB attribution) are in
 3. Open **"Generation history"** → cards with thumbnails; click one to
   reopen it. (Right after clone this page is empty until you generate
    locally.)
-4. Click **"Text to 3D"** -> go back to the home page no matter which
-   page you are in
+4. Click **"Text to 3D"** -> the home link, it clears the url and returns to the home page (the text input prompt form) no matter which page you are in.
 5. Optional: stop the backend mid-generation and start it again.
   Generation progress should resume after backend restarts.
 
